@@ -5,7 +5,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Camera
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -32,7 +32,7 @@ fun PhotoScanScreen(
                 title = { Text("拍照辨識起手手牌", color = TextLight, fontSize = 18.sp) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "返回", tint = TextLight)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = TextLight)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MahjongGreenDark)
@@ -84,7 +84,6 @@ fun PhotoScanScreen(
             Button(
                 onClick = {
                     isProcessing = true
-                    // 模擬拍照辨識完成，自動導向確認手牌
                     val sampleTiles = listOf(
                         "wan_1", "wan_2", "wan_3", "wan_4", "wan_5", "wan_6",
                         "tong_1", "tong_2", "tong_3",

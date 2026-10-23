@@ -110,5 +110,10 @@ data class MahjongTile(
         fun findById(id: String): MahjongTile? {
             return ALL_TILES_LIST.find { it.id == id }
         }
+
+        /**
+         * 取得某張牌在全副牌中的上限總數（普通牌 4 張，花牌 1 張）
+         */
+        fun getMaxCount(tile: MahjongTile): Int = if (tile.isFlower) 1 else 4
     }
 }

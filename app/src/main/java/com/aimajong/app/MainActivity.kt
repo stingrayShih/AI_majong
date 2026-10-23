@@ -28,8 +28,8 @@ class MainActivity : ComponentActivity() {
 
                     "manual_setup" -> ManualSetupScreen(
                         onBack = { currentScreen = "home" },
-                        onStartGameWithHand = { tiles ->
-                            gameViewModel.startNewGame(tiles)
+                        onStartGameWithHand = { tiles, isDealer ->
+                            gameViewModel.startNewGame(tiles, isDealer)
                             currentScreen = "game"
                         }
                     )
@@ -37,7 +37,7 @@ class MainActivity : ComponentActivity() {
                     "photo_scan" -> PhotoScanScreen(
                         onBack = { currentScreen = "home" },
                         onPhotoRecognized = { tiles ->
-                            gameViewModel.startNewGame(tiles)
+                            gameViewModel.startNewGame(tiles, isDealer = false)
                             currentScreen = "game"
                         }
                     )

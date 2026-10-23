@@ -15,4 +15,11 @@ enum class PlayerSeat(val title: String) {
         DUI_JIA -> SHANG_JIA
         SHANG_JIA -> SELF
     }
+
+    fun previous(): PlayerSeat = when (this) {
+        SELF -> SHANG_JIA
+        SHANG_JIA -> DUI_JIA
+        DUI_JIA -> XIA_JIA
+        XIA_JIA -> SELF
+    }
 }

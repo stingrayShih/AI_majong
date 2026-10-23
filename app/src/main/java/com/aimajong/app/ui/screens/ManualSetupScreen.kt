@@ -6,12 +6,13 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -25,32 +26,43 @@ import com.aimajong.app.ui.theme.*
 @Composable
 fun ManualSetupScreen(
     onBack: () -> Unit,
-    onStartGameWithHand: (List<MahjongTile>) -> Unit
+    onStartGameWithHand: (List<MahjongTile>, Boolean) -> Unit
 ) {
     val selectedTiles = remember { mutableStateListOf<MahjongTile>() }
+    var isDealer by remember { mutableStateOf(false) } // 是否當莊
+    val targetTileCount = if (isDealer) 17 else 16
+
     var activeSuit by remember { mutableStateOf(TileSuit.WAN) }
     val suitTiles = remember(activeSuit) { MahjongTile.getTilesBySuit(activeSuit) }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("選取起手手牌 (${selectedTiles.size}/16)", color = TextLight, fontSize = 18.sp) },
+                title = { Text("選取起手手牌 (${selectedTiles.size}/$targetTileCount)", color = TextLight, fontSize = 18.sp) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "返回", tint = TextLight)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = TextLight)
                     }
                 },
                 actions = {
                     // 一鍵快速範例手牌
                     TextButton(onClick = {
                         selectedTiles.clear()
-                        // 範例：萬子123456, 筒子222, 條子789, 東風, 紅中紅中
-                        val demoIds = listOf(
-                            "wan_1", "wan_2", "wan_3", "wan_4", "wan_5", "wan_6",
-                            "tong_2", "tong_2", "tong_2",
-                            "tiao_7", "tiao_8", "tiao_9",
-                            "east", "zhong", "zhong", "fa"
-                        )
+                        val demoIds = if (isDealer) {
+                            listOf(
+                                "wan_1", "wan_2", "wan_3", "wan_4", "wan_5", "wan_6",
+                                "tong_2", "tong_2", "tong_2",
+                                "tiao_7", "tiao_8", "tiao_9",
+                                "east", "zhong", "zhong", "fa", "white"
+                            )
+                        } else {
+                            listOf(
+                                "wan_1", "wan_2", "wan_3", "wan_4", "wan_5", "wan_6",
+                                "tong_2", "tong_2", "tong_2",
+                                "tiao_7", "tiao_8", "tiao_9",
+                                "east", "zhong", "zhong", "fa"
+                            )
+                        }
                         demoIds.mapNotNull { MahjongTile.findById(it) }.forEach {
                             selectedTiles.add(it)
                         }
@@ -70,7 +82,33 @@ fun ManualSetupScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.SpaceBetween
         ) {
-            // 目前選取的 16 張手牌預覽區
+            // 莊家切換開關
+            Card(
+                colors = CardDefaults.cardColors(containerColor = CardBackground),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text("開局莊家設定", color = AccentGold, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                        Text(
+                            if (isDealer) "我是莊家 (起手 17 張，首輪直接出牌)" else "我是閒家 (起手 16 張，等待摸牌/鳴牌)",
+                            color = TextLight,
+                            fontSize = 12.sp
+                        )
+                    }
+                    Switch(
+                        checked = isDealer,
+                        onCheckedChange = { isDealer = it }
+                    )
+                }
+            }
+
+            // 目前選取的手牌預覽區
             Card(
                 colors = CardDefaults.cardColors(containerColor = CardBackground),
                 shape = RoundedCornerShape(12.dp),
@@ -99,7 +137,7 @@ fun ManualSetupScreen(
 
                     if (selectedTiles.isEmpty()) {
                         Text(
-                            "請在下方點選牌面加入，台灣麻將起手需 16 張",
+                            "請在下方點選牌面，已啟動 4 張上限防呆",
                             color = TextMuted,
                             fontSize = 13.sp,
                             modifier = Modifier.padding(vertical = 12.dp)
@@ -124,7 +162,7 @@ fun ManualSetupScreen(
                 }
             }
 
-            // 牌面選擇區
+            // 牌面選擇區 (帶 4 張上限防呆)
             Card(
                 colors = CardDefaults.cardColors(containerColor = CardBackground),
                 shape = RoundedCornerShape(12.dp),
@@ -155,16 +193,30 @@ fun ManualSetupScreen(
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         suitTiles.forEach { tile ->
-                            MahjongTileView(
-                                tile = tile,
-                                width = 44.dp,
-                                height = 62.dp,
-                                onClick = {
-                                    if (selectedTiles.size < 17) {
-                                        selectedTiles.add(tile)
-                                    }
-                                }
-                            )
+                            val currentChosen = selectedTiles.count { it.id == tile.id }
+                            val maxAllowed = MahjongTile.getMaxCount(tile)
+                            val remaining = maxAllowed - currentChosen
+                            val canAdd = remaining > 0 && selectedTiles.size < targetTileCount
+
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier.then(if (!canAdd) Modifier.alpha(0.35f) else Modifier)
+                            ) {
+                                MahjongTileView(
+                                    tile = tile,
+                                    width = 44.dp,
+                                    height = 62.dp,
+                                    onClick = if (canAdd) {
+                                        { selectedTiles.add(tile) }
+                                    } else null
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = "剩 $remaining",
+                                    fontSize = 10.sp,
+                                    color = if (canAdd) AccentGold else Color.Red
+                                )
+                            }
                         }
                     }
                 }
@@ -172,8 +224,8 @@ fun ManualSetupScreen(
 
             // 開始對局按鈕
             Button(
-                onClick = { onStartGameWithHand(selectedTiles.toList()) },
-                enabled = selectedTiles.size in 16..17,
+                onClick = { onStartGameWithHand(selectedTiles.toList(), isDealer) },
+                enabled = selectedTiles.size == targetTileCount,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(52.dp),
@@ -184,8 +236,8 @@ fun ManualSetupScreen(
                 shape = RoundedCornerShape(12.dp)
             ) {
                 Text(
-                    text = if (selectedTiles.size >= 16) "開始 AI 決策對局 🚀" else "請選滿 16 張手牌 (${selectedTiles.size}/16)",
-                    color = if (selectedTiles.size >= 16) Color.Black else Color.Gray,
+                    text = if (selectedTiles.size == targetTileCount) "開始 AI 決策對局 🚀" else "請選滿 $targetTileCount 張手牌 (${selectedTiles.size}/$targetTileCount)",
+                    color = if (selectedTiles.size == targetTileCount) Color.Black else Color.Gray,
                     fontWeight = FontWeight.Bold,
                     fontSize = 16.sp
                 )
