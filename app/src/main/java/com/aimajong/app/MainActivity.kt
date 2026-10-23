@@ -37,8 +37,8 @@ class MainActivity : ComponentActivity() {
 
                     "photo_scan" -> PhotoScanScreen(
                         onBack = { currentScreen = "home" },
-                        onPhotoRecognized = { tiles ->
-                            gameViewModel.startNewGame(tiles, PlayerSeat.SELF)
+                        onPhotoRecognized = { tiles, dealerSeat ->
+                            gameViewModel.startNewGame(tiles, dealerSeat)
                             currentScreen = "game"
                         }
                     )

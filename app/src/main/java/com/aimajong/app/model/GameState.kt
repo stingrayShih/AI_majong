@@ -36,40 +36,28 @@ data class GameState(
     val history: List<GameActionRecord> = emptyList(),
     val isGameOver: Boolean = false,
     val winnerSeat: PlayerSeat? = null,
-    val loserSeat: PlayerSeat? = null // 放槍者，若自摸則為 null
+    val loserSeat: PlayerSeat? = null
 ) {
-    /**
-     * 自己手牌張數（不含已副露的吃碰槓牌與花牌）
-     */
     val concealedHandCount: Int get() = handTiles.size
 
-    /**
-     * 自己包含副露的「有效總牌數」
-     * 正常台灣 16 張：非出牌階段為 16 張；摸牌/吃碰後為 17 張
-     */
     val totalHandWeight: Int get() = concealedHandCount + (melds.size * 3)
 
-    /**
-     * 當前自己是否處於「可以打牌」的狀態 (輪到自己且在出牌階段)
-     */
     val canSelfDiscard: Boolean get() =
         !isGameOver && currentTurnPlayer == PlayerSeat.SELF && phase == TurnPhase.AWAITING_DISCARD
 
-    /**
-     * 當前自己是否處於「可以摸牌」的狀態 (輪到自己且在摸牌階段)
-     */
     val canSelfDraw: Boolean get() =
         !isGameOver && currentTurnPlayer == PlayerSeat.SELF && phase == TurnPhase.AWAITING_DRAW
 
-    /**
-     * 當前是否處於他家打牌後的鳴牌判定階段
-     */
     val isInCallResponsePhase: Boolean get() =
         !isGameOver && phase == TurnPhase.AWAITING_CALL_RESPONSE
 
     /**
-     * 總共已看見的某張牌的數量（手牌 + 所有人牌河 + 所有吃碰槓明牌）
+     * 自己是否可以對當前打出的牌進行鳴牌判定
+     * 規則：自己打出的牌，自己【絕對不能】吃碰槓！只能由他家鳴牌
      */
+    val canSelfCallLastDiscard: Boolean get() =
+        isInCallResponsePhase && lastDiscard != null && lastDiscard.first != PlayerSeat.SELF
+
     fun countVisibleTile(tile: MahjongTile): Int {
         var count = 0
         count += handTiles.count { it.id == tile.id }
@@ -88,41 +76,33 @@ data class GameState(
         return count
     }
 
-    /**
-     * 某張牌在牌山中可能還剩下的數量（最多 4 張，花牌最多 1 張）
-     */
     fun remainingCount(tile: MahjongTile): Int {
         val maxTotal = MahjongTile.getMaxCount(tile)
         return (maxTotal - countVisibleTile(tile)).coerceAtLeast(0)
     }
 
-    /**
-     * 檢測自己手牌是否可以「碰」某張牌（手牌中至少有 2 張同牌）
-     */
     fun canPeng(targetTile: MahjongTile): Boolean {
+        // 自己打的不能碰
+        if (lastDiscard?.first == PlayerSeat.SELF) return false
         return handTiles.count { it.id == targetTile.id } >= 2
     }
 
-    /**
-     * 檢測自己手牌是否可以「明槓」某張牌（手牌中至少有 3 張同牌）
-     */
     fun canMingGang(targetTile: MahjongTile): Boolean {
+        // 自己打的不能槓
+        if (lastDiscard?.first == PlayerSeat.SELF) return false
         return handTiles.count { it.id == targetTile.id } >= 3
     }
 
-    /**
-     * 檢測自己手牌中是否有可以「暗槓」的牌（手牌中有 4 張同牌）
-     */
     fun getAnGangOptions(): List<MahjongTile> {
         return handTiles.groupBy { it.id }
             .filter { it.value.size >= 4 }
             .map { it.value.first() }
     }
 
-    /**
-     * 檢測針對上家打出的牌，自己手牌中所有可以「吃」的 2 張組合
-     */
     fun getChiCombinations(targetTile: MahjongTile): List<Pair<MahjongTile, MahjongTile>> {
+        // 嚴格限定：自己打的不能吃，且只有上家打的才可以吃
+        if (lastDiscard?.first != PlayerSeat.SHANG_JIA) return emptyList()
+
         if (targetTile.suit != TileSuit.WAN &&
             targetTile.suit != TileSuit.TONG &&
             targetTile.suit != TileSuit.TIAO
@@ -135,21 +115,18 @@ data class GameState(
         val suitTiles = handTiles.filter { it.suit == suit }
         val results = mutableListOf<Pair<MahjongTile, MahjongTile>>()
 
-        // 情況 1: [r-2, r-1, (r)] 例如手牌有 1,2，吃 3
         if (r >= 3) {
             val t1 = suitTiles.find { it.rank == r - 2 }
             val t2 = suitTiles.find { it.rank == r - 1 }
             if (t1 != null && t2 != null) results.add(Pair(t1, t2))
         }
 
-        // 情況 2: [r-1, (r), r+1] 例如手牌有 2,4，吃 3
         if (r in 2..8) {
             val t1 = suitTiles.find { it.rank == r - 1 }
             val t2 = suitTiles.find { it.rank == r + 1 }
             if (t1 != null && t2 != null) results.add(Pair(t1, t2))
         }
 
-        // 情況 3: [(r), r+1, r+2] 例如手牌有 4,5，吃 3
         if (r <= 7) {
             val t1 = suitTiles.find { it.rank == r + 1 }
             val t2 = suitTiles.find { it.rank == r + 2 }
@@ -160,9 +137,6 @@ data class GameState(
     }
 }
 
-/**
- * AI 策略推薦結果
- */
 data class AIDecisionResult(
     val recommendedAction: String,
     val optionsProbability: List<DecisionChoiceProbability>,

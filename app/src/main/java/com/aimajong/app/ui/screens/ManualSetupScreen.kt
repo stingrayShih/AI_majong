@@ -1,6 +1,7 @@
 package com.aimajong.app.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -40,7 +41,7 @@ fun ManualSetupScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("選取起手手牌 (${selectedTiles.size}/$targetTileCount)", color = TextLight, fontSize = 18.sp) },
+                title = { Text("選取起手手牌 (${selectedTiles.size}/$targetTileCount)", color = TextLight, fontSize = 17.sp) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = TextLight)
@@ -68,7 +69,7 @@ fun ManualSetupScreen(
                             selectedTiles.add(it)
                         }
                     }) {
-                        Text("載入範例牌", color = AccentGold)
+                        Text("載入範例牌", color = AccentGold, fontWeight = FontWeight.Bold)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MahjongGreenDark)
@@ -80,37 +81,62 @@ fun ManualSetupScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(14.dp),
+                .padding(horizontal = 12.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.SpaceBetween
         ) {
-            // 誰當莊家選擇區 (四家皆可選)
+            // 【最上方：開局莊家設定卡片】超顯眼、大按鈕
             Card(
                 colors = CardDefaults.cardColors(containerColor = CardBackground),
                 shape = RoundedCornerShape(12.dp),
+                border = androidx.compose.foundation.BorderStroke(1.5.dp, AccentGold),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Column(modifier = Modifier.padding(12.dp)) {
-                    Text("開局誰當莊家 (首輪由莊家先出牌)：", color = AccentGold, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                    Spacer(modifier = Modifier.height(6.dp))
+                Column(modifier = Modifier.padding(10.dp)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("👑 請選擇誰當莊家：", color = AccentGold, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                        Text(
+                            if (isSelfDealer) "我當莊 (起手 17 張 先攻)" else "${selectedDealer.title}當莊 (起手 16 張)",
+                            color = if (isSelfDealer) AccentGold else Color(0xFFFFB74D),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
 
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        PlayerSeat.values().forEach { seat ->
-                            FilterChip(
-                                selected = selectedDealer == seat,
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf(
+                            PlayerSeat.SELF to "我",
+                            PlayerSeat.XIA_JIA to "下家",
+                            PlayerSeat.DUI_JIA to "對家",
+                            PlayerSeat.SHANG_JIA to "上家"
+                        ).forEach { (seat, label) ->
+                            val isSelected = selectedDealer == seat
+                            Button(
                                 onClick = {
                                     selectedDealer = seat
                                     if (seat != PlayerSeat.SELF && selectedTiles.size > 16) {
                                         selectedTiles.removeAt(selectedTiles.lastIndex)
                                     }
                                 },
-                                label = {
-                                    Text(
-                                        text = if (seat == PlayerSeat.SELF) "我當莊(17張)" else "${seat.title}當莊",
-                                        fontSize = 11.sp
-                                    )
-                                },
-                                modifier = Modifier.weight(1f)
-                            )
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = if (isSelected) AccentGold else MahjongGreenDark,
+                                    contentColor = if (isSelected) Color.Black else TextLight
+                                ),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.weight(1f).height(38.dp),
+                                contentPadding = PaddingValues(0.dp)
+                            ) {
+                                Text(
+                                    text = if (isSelected) "👑 $label" else label,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp
+                                )
+                            }
                         }
                     }
                 }
@@ -122,20 +148,20 @@ fun ManualSetupScreen(
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Column(modifier = Modifier.padding(12.dp)) {
+                Column(modifier = Modifier.padding(10.dp)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            "我的起手牌 (${selectedTiles.size}/$targetTileCount):",
+                            "我的起手牌 (${selectedTiles.size}/$targetTileCount 張):",
                             color = AccentGold,
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Bold
                         )
                         if (selectedTiles.isNotEmpty()) {
-                            IconButton(onClick = { selectedTiles.clear() }) {
+                            IconButton(onClick = { selectedTiles.clear() }, modifier = Modifier.size(28.dp)) {
                                 Icon(Icons.Default.Delete, contentDescription = "清空", tint = Color.LightGray)
                             }
                         }
@@ -145,7 +171,7 @@ fun ManualSetupScreen(
 
                     if (selectedTiles.isEmpty()) {
                         Text(
-                            "請在下方點選牌面加入，已啟動全場 4 張上限防呆",
+                            "點選下方牌面加入（同一種牌最多 4 張，花牌 1 張）",
                             color = TextMuted,
                             fontSize = 12.sp,
                             modifier = Modifier.padding(vertical = 10.dp)
@@ -176,7 +202,7 @@ fun ManualSetupScreen(
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Column(modifier = Modifier.padding(12.dp)) {
+                Column(modifier = Modifier.padding(10.dp)) {
                     TabRow(
                         selectedTabIndex = activeSuit.ordinal,
                         containerColor = MahjongGreenDark,
@@ -192,7 +218,7 @@ fun ManualSetupScreen(
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(10.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
 
                     Row(
                         modifier = Modifier
@@ -236,7 +262,7 @@ fun ManualSetupScreen(
                 enabled = selectedTiles.size == targetTileCount,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(50.dp),
+                    .height(48.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = AccentGold,
                     disabledContainerColor = Color.DarkGray

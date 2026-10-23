@@ -16,15 +16,17 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aimajong.app.model.MahjongTile
+import com.aimajong.app.model.PlayerSeat
 import com.aimajong.app.ui.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PhotoScanScreen(
     onBack: () -> Unit,
-    onPhotoRecognized: (List<MahjongTile>) -> Unit
+    onPhotoRecognized: (List<MahjongTile>, PlayerSeat) -> Unit
 ) {
     var isProcessing by remember { mutableStateOf(false) }
+    var selectedDealer by remember { mutableStateOf(PlayerSeat.SELF) }
 
     Scaffold(
         topBar = {
@@ -48,12 +50,39 @@ fun PhotoScanScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.SpaceBetween
         ) {
-            Text(
-                "請將 16 張實體手牌整齊平排於對焦框中",
-                color = AccentGold,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Medium
-            )
+            // 莊家設定
+            Card(
+                colors = CardDefaults.cardColors(containerColor = CardBackground),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(10.dp)) {
+                    Text("👑 開局誰當莊家：", color = AccentGold, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        listOf(
+                            PlayerSeat.SELF to "我",
+                            PlayerSeat.XIA_JIA to "下家",
+                            PlayerSeat.DUI_JIA to "對家",
+                            PlayerSeat.SHANG_JIA to "上家"
+                        ).forEach { (seat, label) ->
+                            val isSelected = selectedDealer == seat
+                            Button(
+                                onClick = { selectedDealer = seat },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = if (isSelected) AccentGold else MahjongGreenDark,
+                                    contentColor = if (isSelected) Color.Black else TextLight
+                                ),
+                                shape = RoundedCornerShape(6.dp),
+                                modifier = Modifier.weight(1f).height(36.dp),
+                                contentPadding = PaddingValues(0.dp)
+                            ) {
+                                Text(if (isSelected) "👑 $label" else label, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            }
+                        }
+                    }
+                }
+            }
 
             // 取景引導框
             Box(
@@ -84,24 +113,33 @@ fun PhotoScanScreen(
             Button(
                 onClick = {
                     isProcessing = true
-                    val sampleTiles = listOf(
-                        "wan_1", "wan_2", "wan_3", "wan_4", "wan_5", "wan_6",
-                        "tong_1", "tong_2", "tong_3",
-                        "tiao_4", "tiao_5", "tiao_6",
-                        "east", "south", "zhong", "fa"
-                    ).mapNotNull { MahjongTile.findById(it) }
+                    val sampleTiles = if (selectedDealer == PlayerSeat.SELF) {
+                        listOf(
+                            "wan_1", "wan_2", "wan_3", "wan_4", "wan_5", "wan_6",
+                            "tong_1", "tong_2", "tong_3",
+                            "tiao_4", "tiao_5", "tiao_6",
+                            "east", "south", "zhong", "fa", "bai"
+                        )
+                    } else {
+                        listOf(
+                            "wan_1", "wan_2", "wan_3", "wan_4", "wan_5", "wan_6",
+                            "tong_1", "tong_2", "tong_3",
+                            "tiao_4", "tiao_5", "tiao_6",
+                            "east", "south", "zhong", "fa"
+                        )
+                    }.mapNotNull { MahjongTile.findById(it) }
 
-                    onPhotoRecognized(sampleTiles)
+                    onPhotoRecognized(sampleTiles, selectedDealer)
                 },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(54.dp),
+                    .height(52.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = AccentGold),
                 shape = RoundedCornerShape(12.dp)
             ) {
                 Icon(Icons.Default.Camera, contentDescription = null, tint = Color.Black)
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("拍攝照片並辨識", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                Text("拍攝照片並開局 (${selectedDealer.title}當莊)", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 15.sp)
             }
         }
     }

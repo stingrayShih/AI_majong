@@ -40,8 +40,6 @@ class GameViewModel : ViewModel() {
 
     /**
      * 開局設定
-     * @param initialHand 起手手牌 (若自己當莊為 17 張，閒家為 16 張)
-     * @param dealerSeat 誰當莊家
      */
     fun startNewGame(initialHand: List<MahjongTile> = emptyList(), dealerSeat: PlayerSeat = PlayerSeat.SELF) {
         historySnapshots.clear()
@@ -49,9 +47,20 @@ class GameViewModel : ViewModel() {
             dealerSeat = dealerSeat,
             handTiles = initialHand.sorted(),
             currentTurn = 1,
-            currentTurnPlayer = dealerSeat, // 莊家先攻
-            phase = TurnPhase.AWAITING_DISCARD // 莊家起手直接出牌
+            currentTurnPlayer = dealerSeat, // 莊家首攻
+            phase = TurnPhase.AWAITING_DISCARD
         )
+        triggerAIDecision()
+    }
+
+    /**
+     * 直接更換莊家 (支援開局後手動隨時切換)
+     */
+    fun setDealer(seat: PlayerSeat) {
+        saveSnapshot()
+        _gameState.update { s ->
+            s.copy(dealerSeat = seat)
+        }
         triggerAIDecision()
     }
 
@@ -67,7 +76,6 @@ class GameViewModel : ViewModel() {
         saveSnapshot()
 
         if (tile.isFlower) {
-            // 補花：花牌計入花牌區，繼續處於摸牌階段補摸一張
             _gameState.update { s ->
                 val record = GameActionRecord(
                     turnNumber = s.currentTurn,
@@ -82,7 +90,6 @@ class GameViewModel : ViewModel() {
                 )
             }
         } else {
-            // 摸入常規牌：進入等待出牌階段
             _gameState.update { s ->
                 val newHand = (s.handTiles + tile).sorted()
                 val record = GameActionRecord(
@@ -108,8 +115,6 @@ class GameViewModel : ViewModel() {
         val current = _gameState.value
         if (current.isGameOver) return
         if (current.currentTurnPlayer != seat || current.phase != TurnPhase.AWAITING_DISCARD) return
-
-        // 牌數上限檢查
         if (seat != PlayerSeat.SELF && current.remainingCount(tile) <= 0) return
 
         saveSnapshot()
@@ -149,7 +154,7 @@ class GameViewModel : ViewModel() {
 
     /**
      * 鳴牌判定通過（無人吃碰槓，或選擇「過」）
-     * 遊戲順位自然輪替給打牌者的下一家摸牌
+     * 順位自然流向打牌者的下一家摸牌
      */
     fun onPassCall() {
         val current = _gameState.value
@@ -171,17 +176,18 @@ class GameViewModel : ViewModel() {
     }
 
     /**
-     * 執行吃/碰/明槓（由打出的牌觸發，並發生【順位跳轉】）
+     * 執行吃/碰/明槓（由打出的牌觸發，並發生順位跳轉）
      */
     fun onMeldAction(seat: PlayerSeat, meld: Meld) {
         val current = _gameState.value
         if (current.phase != TurnPhase.AWAITING_CALL_RESPONSE) return
+        // 嚴格規則防呆：自己打的牌自己【絕對不能】吃碰槓！
+        if (current.lastDiscard?.first == seat) return
 
         saveSnapshot()
 
         _gameState.update { s ->
             if (seat == PlayerSeat.SELF) {
-                // 自己吃碰槓：手牌扣除除觸發牌外的其他牌
                 val newHand = s.handTiles.toMutableList()
                 val tilesToRemove = meld.tiles.toMutableList()
                 if (meld.triggerTile != null) {
@@ -201,8 +207,6 @@ class GameViewModel : ViewModel() {
                     extraTiles = meld.tiles
                 )
 
-                // 順位跳轉給自己！
-                // 如果是槓牌，需要補一張槓尾牌 (AWAITING_DRAW)；若吃碰則直接出牌 (AWAITING_DISCARD)
                 val nextPhase = if (meld.type == ActionType.GANG_MING) TurnPhase.AWAITING_DRAW else TurnPhase.AWAITING_DISCARD
 
                 s.copy(
@@ -213,7 +217,6 @@ class GameViewModel : ViewModel() {
                     history = s.history + record
                 )
             } else {
-                // 他家吃碰槓：記錄至該家明牌區，並將順位跳轉給該家！
                 val otherList = (s.otherMelds[seat] ?: emptyList()) + meld
                 val newOtherMelds = s.otherMelds.toMutableMap().apply { put(seat, otherList) }
 
@@ -240,7 +243,7 @@ class GameViewModel : ViewModel() {
     }
 
     /**
-     * 自己暗槓 (在自己出牌回合，且手牌有 4 張相同)
+     * 自己暗槓
      */
     fun onAnGang(tile: MahjongTile) {
         val current = _gameState.value
@@ -271,7 +274,6 @@ class GameViewModel : ViewModel() {
                 extraTiles = meld.tiles
             )
 
-            // 暗槓後需要從槓尾補摸一張牌
             s.copy(
                 handTiles = newHand.sorted(),
                 melds = s.melds + meld,
@@ -284,7 +286,7 @@ class GameViewModel : ViewModel() {
     }
 
     /**
-     * 他家打牌並摸牌 (方便直接記錄他家回合的完整動作)
+     * 他家打牌
      */
     fun onOtherTurnAction(seat: PlayerSeat, discardedTile: MahjongTile) {
         val current = _gameState.value
@@ -316,9 +318,7 @@ class GameViewModel : ViewModel() {
     }
 
     /**
-     * 宣告胡牌 (自摸或抓放槍)
-     * @param winnerSeat 誰胡牌
-     * @param loserSeat 誰放槍 (若自摸則為 null)
+     * 宣告胡牌
      */
     fun onDeclareHu(winnerSeat: PlayerSeat, loserSeat: PlayerSeat?) {
         saveSnapshot()
@@ -371,46 +371,56 @@ class GameViewModel : ViewModel() {
                 val fromSeat = lastDiscard.first
                 val discardedTile = lastDiscard.second
 
-                if (fromSeat != PlayerSeat.SELF) {
-                    val choices = mutableListOf<DecisionChoiceProbability>()
-
-                    // A. 碰牌 (任何一家打牌皆可碰)
-                    if (state.canPeng(discardedTile)) {
-                        choices.add(DecisionChoiceProbability("碰 ${discardedTile.name}", 0.76f))
-                    }
-
-                    // B. 吃牌 (嚴格限定：只有上家打牌才能吃！)
-                    if (fromSeat == PlayerSeat.SHANG_JIA) {
-                        val chiOptions = state.getChiCombinations(discardedTile)
-                        chiOptions.forEach { (t1, t2) ->
-                            choices.add(DecisionChoiceProbability("吃 [${t1.name}, ${t2.name}]", 0.65f))
-                        }
-                    }
-
-                    // C. 明槓 (任何一家打牌皆可槓)
-                    if (state.canMingGang(discardedTile)) {
-                        choices.add(DecisionChoiceProbability("明槓 ${discardedTile.name}", 0.88f))
-                    }
-
-                    // D. 榮和胡牌提示 (手牌若聽此牌)
-                    choices.add(DecisionChoiceProbability("胡牌 (榮和)", 0.95f))
-
-                    // E. 過
-                    choices.add(DecisionChoiceProbability("過 (不鳴牌)", 0.22f))
-
-                    val best = choices.maxByOrNull { it.probability }
+                // 【自己打出的牌】：自己絕對不能碰/槓/吃！
+                if (fromSeat == PlayerSeat.SELF) {
                     _aiDecision.value = AIDecisionResult(
-                        recommendedAction = "針對 ${fromSeat.title} 的 ${discardedTile.name}：建議 ${best?.actionText}",
-                        optionsProbability = choices.sortedByDescending { it.probability },
-                        explanationNote = if (fromSeat == PlayerSeat.SHANG_JIA) {
-                            "上家出牌：可吃、可碰、可槓、可胡"
-                        } else {
-                            "${fromSeat.title}出牌：非上家不可吃，僅可碰/槓/胡"
-                        }
+                        recommendedAction = "你已打出 [${discardedTile.name}]",
+                        optionsProbability = emptyList(),
+                        explanationNote = "等待他家是否有吃碰槓反應；若他家皆未鳴牌，請點擊下方淺色【過】換下家摸牌"
                     )
                     _isLoadingDecision.value = false
                     return@launch
                 }
+
+                // 【他家打出的牌】：評估自己是否吃碰槓胡
+                val choices = mutableListOf<DecisionChoiceProbability>()
+
+                // A. 碰牌
+                if (state.canPeng(discardedTile)) {
+                    choices.add(DecisionChoiceProbability("碰 ${discardedTile.name}", 0.76f))
+                }
+
+                // B. 吃牌 (嚴格限定：只有上家打牌才能吃！)
+                if (fromSeat == PlayerSeat.SHANG_JIA) {
+                    val chiOptions = state.getChiCombinations(discardedTile)
+                    chiOptions.forEach { (t1, t2) ->
+                        choices.add(DecisionChoiceProbability("吃 [${t1.name}, ${t2.name}]", 0.65f))
+                    }
+                }
+
+                // C. 明槓
+                if (state.canMingGang(discardedTile)) {
+                    choices.add(DecisionChoiceProbability("明槓 ${discardedTile.name}", 0.88f))
+                }
+
+                // D. 榮和胡牌提示
+                choices.add(DecisionChoiceProbability("胡牌 (榮和)", 0.95f))
+
+                // E. 過
+                choices.add(DecisionChoiceProbability("過 (不鳴牌)", 0.22f))
+
+                val best = choices.maxByOrNull { it.probability }
+                _aiDecision.value = AIDecisionResult(
+                    recommendedAction = "針對 ${fromSeat.title} 的 ${discardedTile.name}：建議 ${best?.actionText}",
+                    optionsProbability = choices.sortedByDescending { it.probability },
+                    explanationNote = if (fromSeat == PlayerSeat.SHANG_JIA) {
+                        "上家出牌：可吃、可碰、可槓、可胡"
+                    } else {
+                        "${fromSeat.title}出牌：非上家不可吃，僅可碰/槓/胡"
+                    }
+                )
+                _isLoadingDecision.value = false
+                return@launch
             }
 
             // 2. 輪到自己出牌階段 (AWAITING_DISCARD)
@@ -419,14 +429,12 @@ class GameViewModel : ViewModel() {
                 val anGangOptions = state.getAnGangOptions()
                 val choices = mutableListOf<DecisionChoiceProbability>()
 
-                // 暗槓策略提示
                 if (anGangOptions.isNotEmpty()) {
                     anGangOptions.forEach { tile ->
                         choices.add(DecisionChoiceProbability("暗槓 ${tile.name}", 0.93f))
                     }
                 }
 
-                // 出牌推薦 (優先推薦字牌孤張)
                 val candidates = hand.distinctBy { it.id }.takeLast(4)
                 candidates.forEachIndexed { index, tile ->
                     val prob = when (index) {

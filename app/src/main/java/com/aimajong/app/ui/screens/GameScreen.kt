@@ -3,6 +3,7 @@ package com.aimajong.app.ui.screens
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -45,6 +46,7 @@ fun GameScreen(
     var showSelfMeldDialog by remember { mutableStateOf(false) }
     var showAnGangDialog by remember { mutableStateOf(false) }
     var showHuDialog by remember { mutableStateOf(false) }
+    var showChangeDealerDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -58,13 +60,19 @@ fun GameScreen(
                             fontWeight = FontWeight.Bold
                         )
                         Spacer(modifier = Modifier.width(8.dp))
+                        // 點選可直接換莊家
                         val dealerName = if (state.dealerSeat == PlayerSeat.SELF) "我當莊" else "${state.dealerSeat.title}當莊"
-                        Surface(shape = RoundedCornerShape(4.dp), color = TileWanRed) {
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = TileWanRed,
+                            modifier = Modifier.clickable { showChangeDealerDialog = true }
+                        ) {
                             Text(
-                                text = " 莊: $dealerName ",
+                                text = " 莊: $dealerName ▾ ",
                                 color = Color.White,
                                 fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
                             )
                         }
                     }
@@ -221,7 +229,9 @@ fun GameScreen(
                             state.isGameOver -> "牌局已結束"
                             state.canSelfDiscard -> "🟢 輪到你出牌 (點牌打出)"
                             state.canSelfDraw -> "🟡 輪到你摸牌"
-                            state.isInCallResponsePhase -> "⚡ 他家出牌：可點擊鳴牌或按【過】"
+                            state.isInCallResponsePhase -> {
+                                if (state.lastDiscard?.first == PlayerSeat.SELF) "你已出牌，等待他家反應" else "⚡ 他家出牌：可點擊鳴牌或按【過】"
+                            }
                             else -> "🔴 等待 ${state.currentTurnPlayer.title} 行動"
                         },
                         color = if (state.canSelfDiscard) Color(0xFF81C784) else AccentGold,
@@ -232,7 +242,6 @@ fun GameScreen(
 
                 Spacer(modifier = Modifier.height(4.dp))
 
-                // 手牌橫向列表
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -260,7 +269,7 @@ fun GameScreen(
                 }
             }
 
-            // 4. 底部動作控制面板 (依當前狀態精準呈現對應按鈕)
+            // 4. 底部動作控制面板
             DynamicActionBar(
                 state = state,
                 onDrawClicked = { showTilePickerForDraw = true },
@@ -339,6 +348,19 @@ fun GameScreen(
             }
         )
     }
+
+    // 彈窗: 隨時更換莊家
+    if (showChangeDealerDialog) {
+        ChangeDealerDialog(
+            currentDealer = state.dealerSeat,
+            onDismiss = { showChangeDealerDialog = false },
+            onSelectDealer = { seat ->
+                viewModel.setDealer(seat)
+                showChangeDealerDialog = false
+                Toast.makeText(context, "已將莊家設定為: ${seat.title}", Toast.LENGTH_SHORT).show()
+            }
+        )
+    }
 }
 
 /**
@@ -350,7 +372,11 @@ fun TurnStatusBanner(state: GameState) {
         state.isGameOver -> Triple(TileWanRed, Color.White, "🏆 牌局已結束 (按上方復原或重開局)")
         state.isInCallResponsePhase -> {
             val disc = state.lastDiscard
-            Triple(Color(0xFFE65100), Color.White, "⚡ ${disc?.first?.title} 打出 [${disc?.second?.name}] — 等待鳴牌判定")
+            if (disc?.first == PlayerSeat.SELF) {
+                Triple(MahjongGreenDark, AccentGold, "你已打出 [${disc.second.name}] — 等待他家鳴牌，若無人鳴牌請按【過】")
+            } else {
+                Triple(Color(0xFFE65100), Color.White, "⚡ ${disc?.first?.title} 打出 [${disc?.second?.name}] — 等待鳴牌判定")
+            }
         }
         state.currentTurnPlayer == PlayerSeat.SELF -> {
             if (state.phase == TurnPhase.AWAITING_DRAW) {
@@ -392,7 +418,6 @@ fun DynamicActionBar(
     onHuClicked: () -> Unit
 ) {
     if (state.isGameOver) {
-        // 牌局已結束：鎖定所有操作
         Card(
             colors = CardDefaults.cardColors(containerColor = CardBackground),
             modifier = Modifier.fillMaxWidth().height(48.dp)
@@ -405,20 +430,25 @@ fun DynamicActionBar(
     }
 
     when {
-        // 1. 他家出牌後的【鳴牌判定階段】(AWAITING_CALL_RESPONSE)
+        // 1. 鳴牌判定階段 (AWAITING_CALL_RESPONSE)
         state.isInCallResponsePhase -> {
+            val isMyDiscard = state.lastDiscard?.first == PlayerSeat.SELF
+
             Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    // 我吃/碰/槓
-                    Button(
-                        onClick = onSelfMeldClicked,
-                        modifier = Modifier.weight(1.2f),
-                        colors = ButtonDefaults.buttonColors(containerColor = AccentGold)
-                    ) {
-                        Text("我 吃/碰/槓", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    // 只有【他家打出的牌】，自己才能按「我 吃/碰/槓」！
+                    // 自己打出的牌，自己【絕對不能】吃碰槓！
+                    if (!isMyDiscard) {
+                        Button(
+                            onClick = onSelfMeldClicked,
+                            modifier = Modifier.weight(1.2f),
+                            colors = ButtonDefaults.buttonColors(containerColor = AccentGold)
+                        ) {
+                            Text("我 吃/碰/槓", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        }
                     }
 
                     // 他家吃碰槓 (順位跳轉)
@@ -436,17 +466,28 @@ fun DynamicActionBar(
                         modifier = Modifier.weight(0.9f),
                         colors = ButtonDefaults.buttonColors(containerColor = TileWanRed)
                     ) {
-                        Text("胡牌", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        Text(if (isMyDiscard) "他家胡我" else "胡牌", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                     }
                 }
 
-                // 過 (無人鳴牌，順位流向下一家)
+                // 【過】按鈕：設計成【淺色、超亮、超明顯】，無人吃碰槓時換下家摸牌
                 Button(
                     onClick = onPassCallClicked,
-                    modifier = Modifier.fillMaxWidth().height(40.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = MahjongGreenDark)
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(44.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFFFFF9C4), // 淺亮象牙金
+                        contentColor = Color(0xFF1B5E20)     // 深綠字高對比
+                    ),
+                    shape = RoundedCornerShape(10.dp),
+                    elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp)
                 ) {
-                    Text("過 (無人鳴牌，換下家摸牌)", color = AccentGold, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    Text(
+                        "⏩ 過 (無人鳴牌，換下一家摸牌)",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp
+                    )
                 }
             }
         }
@@ -500,7 +541,7 @@ fun DynamicActionBar(
             }
         }
 
-        // 4. 輪到他家摸打 (當前不是自己)
+        // 4. 輪到他家摸打
         else -> {
             val currentSeat = state.currentTurnPlayer
             Row(
@@ -546,7 +587,6 @@ fun PlayerRiverAndMeldRow(seatName: String, discards: List<MahjongTile>, melds: 
             modifier = Modifier.width(48.dp)
         )
 
-        // 副露明牌展示 (吃碰槓)
         if (melds.isNotEmpty()) {
             Row(
                 modifier = Modifier.horizontalScroll(rememberScrollState()),
@@ -567,7 +607,6 @@ fun PlayerRiverAndMeldRow(seatName: String, discards: List<MahjongTile>, melds: 
             }
         }
 
-        // 牌河 (棄牌)
         Row(
             modifier = Modifier
                 .weight(1f)
@@ -586,7 +625,7 @@ fun PlayerRiverAndMeldRow(seatName: String, discards: List<MahjongTile>, melds: 
 }
 
 /**
- * 自己鳴牌對話框 (吃、碰、明槓) - 嚴格限制：吃牌只有上家可吃
+ * 自己鳴牌對話框 (吃、碰、明槓) - 自己打出的牌絕不能吃碰槓
  */
 @Composable
 fun SelfMeldDialog(
@@ -611,8 +650,8 @@ fun SelfMeldDialog(
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                if (targetTile == null) {
-                    Text("目前沒有最新打出的牌", color = TextMuted, fontSize = 13.sp)
+                if (targetTile == null || lastDiscard.first == PlayerSeat.SELF) {
+                    Text("自己打出的牌不能自己吃碰槓！", color = Color.Red, fontSize = 13.sp)
                 } else {
                     Text(
                         "目標牌: ${lastDiscard.first.title} 打出的 ${targetTile.name}",
@@ -622,7 +661,7 @@ fun SelfMeldDialog(
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    // 1. 碰 (任一家皆可碰)
+                    // 1. 碰
                     val canPeng = state.canPeng(targetTile)
                     Button(
                         onClick = {
@@ -642,7 +681,7 @@ fun SelfMeldDialog(
                         Text(if (canPeng) "碰牌 (${targetTile.name})" else "無法碰 (手牌不足兩張)", color = Color.Black)
                     }
 
-                    // 2. 吃牌 (嚴格限定：只有上家打出的牌才可以吃！)
+                    // 2. 吃牌 (嚴格限定：只有上家打出才可吃)
                     val isFromShangJia = lastDiscard.first == PlayerSeat.SHANG_JIA
                     if (isFromShangJia) {
                         val chiCombinations = state.getChiCombinations(targetTile)
@@ -673,7 +712,7 @@ fun SelfMeldDialog(
                         Text("⚠️ 僅有上家出牌才可吃牌 (${lastDiscard.first.title}出牌不可吃)", color = Color.LightGray, fontSize = 11.sp, modifier = Modifier.padding(vertical = 4.dp))
                     }
 
-                    // 3. 明槓 (任一家皆可槓)
+                    // 3. 明槓
                     val canGang = state.canMingGang(targetTile)
                     if (canGang) {
                         Button(
@@ -735,7 +774,7 @@ fun AnGangDialog(
 }
 
 /**
- * 他家鳴牌對話框 (吃、碰、槓後順位跳轉)
+ * 他家鳴牌對話框
  */
 @Composable
 fun OtherPlayerMeldDialog(
@@ -758,8 +797,12 @@ fun OtherPlayerMeldDialog(
                 Spacer(modifier = Modifier.height(10.dp))
 
                 Text("哪一家鳴牌：", color = TextLight, fontSize = 12.sp)
+                // 排除打出該牌的那一家
+                val eligibleSeats = listOf(PlayerSeat.SHANG_JIA, PlayerSeat.DUI_JIA, PlayerSeat.XIA_JIA)
+                    .filter { it != lastDiscard.first }
+
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    listOf(PlayerSeat.SHANG_JIA, PlayerSeat.DUI_JIA, PlayerSeat.XIA_JIA).forEach { seat ->
+                    eligibleSeats.forEach { seat ->
                         FilterChip(
                             selected = selectedSeat == seat,
                             onClick = { selectedSeat = seat },
@@ -774,7 +817,6 @@ fun OtherPlayerMeldDialog(
                 Text("鳴牌類型：", color = TextLight, fontSize = 12.sp)
                 val isShangJiaOfTarget = lastDiscard.first.next() == selectedSeat
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    // 吃牌僅目標打牌者的下家（相對於打牌者是上家打牌）可吃
                     if (isShangJiaOfTarget) {
                         FilterChip(
                             selected = selectedType == ActionType.CHI,
@@ -886,6 +928,47 @@ fun HuDialog(
                 }
 
                 TextButton(onClick = onDismiss) { Text("取消", color = TextMuted) }
+            }
+        }
+    }
+}
+
+/**
+ * 隨時切換莊家對話框
+ */
+@Composable
+fun ChangeDealerDialog(
+    currentDealer: PlayerSeat,
+    onDismiss: () -> Unit,
+    onSelectDealer: (PlayerSeat) -> Unit
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(shape = RoundedCornerShape(16.dp), color = CardBackground, modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("更換莊家", color = AccentGold, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(6.dp))
+                Text("選擇本局當莊的玩家 (將同步更新門風與標籤)", color = TextMuted, fontSize = 12.sp)
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                PlayerSeat.values().forEach { seat ->
+                    Button(
+                        onClick = { onSelectDealer(seat) },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (currentDealer == seat) AccentGold else MahjongGreenDark
+                        ),
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                    ) {
+                        Text(
+                            text = if (seat == PlayerSeat.SELF) "我當莊 (起手17張先攻)" else "${seat.title}當莊",
+                            color = if (currentDealer == seat) Color.Black else TextLight,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+                TextButton(onClick = onDismiss) { Text("關閉", color = TextMuted) }
             }
         }
     }
