@@ -18,6 +18,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aimajong.app.model.MahjongTile
+import com.aimajong.app.model.PlayerSeat
 import com.aimajong.app.model.TileSuit
 import com.aimajong.app.ui.components.MahjongTileView
 import com.aimajong.app.ui.theme.*
@@ -26,11 +27,12 @@ import com.aimajong.app.ui.theme.*
 @Composable
 fun ManualSetupScreen(
     onBack: () -> Unit,
-    onStartGameWithHand: (List<MahjongTile>, Boolean) -> Unit
+    onStartGameWithHand: (List<MahjongTile>, PlayerSeat) -> Unit
 ) {
     val selectedTiles = remember { mutableStateListOf<MahjongTile>() }
-    var isDealer by remember { mutableStateOf(false) } // 是否當莊
-    val targetTileCount = if (isDealer) 17 else 16
+    var selectedDealer by remember { mutableStateOf(PlayerSeat.SELF) }
+    val isSelfDealer = selectedDealer == PlayerSeat.SELF
+    val targetTileCount = if (isSelfDealer) 17 else 16
 
     var activeSuit by remember { mutableStateOf(TileSuit.WAN) }
     val suitTiles = remember(activeSuit) { MahjongTile.getTilesBySuit(activeSuit) }
@@ -45,15 +47,14 @@ fun ManualSetupScreen(
                     }
                 },
                 actions = {
-                    // 一鍵快速範例手牌
                     TextButton(onClick = {
                         selectedTiles.clear()
-                        val demoIds = if (isDealer) {
+                        val demoIds = if (isSelfDealer) {
                             listOf(
                                 "wan_1", "wan_2", "wan_3", "wan_4", "wan_5", "wan_6",
                                 "tong_2", "tong_2", "tong_2",
                                 "tiao_7", "tiao_8", "tiao_9",
-                                "east", "zhong", "zhong", "fa", "white"
+                                "east", "zhong", "zhong", "fa", "bai"
                             )
                         } else {
                             listOf(
@@ -79,32 +80,39 @@ fun ManualSetupScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(16.dp),
+                .padding(14.dp),
             verticalArrangement = Arrangement.SpaceBetween
         ) {
-            // 莊家切換開關
+            // 誰當莊家選擇區 (四家皆可選)
             Card(
                 colors = CardDefaults.cardColors(containerColor = CardBackground),
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column {
-                        Text("開局莊家設定", color = AccentGold, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                        Text(
-                            if (isDealer) "我是莊家 (起手 17 張，首輪直接出牌)" else "我是閒家 (起手 16 張，等待摸牌/鳴牌)",
-                            color = TextLight,
-                            fontSize = 12.sp
-                        )
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Text("開局誰當莊家 (首輪由莊家先出牌)：", color = AccentGold, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        PlayerSeat.values().forEach { seat ->
+                            FilterChip(
+                                selected = selectedDealer == seat,
+                                onClick = {
+                                    selectedDealer = seat
+                                    if (seat != PlayerSeat.SELF && selectedTiles.size > 16) {
+                                        selectedTiles.removeAt(selectedTiles.lastIndex)
+                                    }
+                                },
+                                label = {
+                                    Text(
+                                        text = if (seat == PlayerSeat.SELF) "我當莊(17張)" else "${seat.title}當莊",
+                                        fontSize = 11.sp
+                                    )
+                                },
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
                     }
-                    Switch(
-                        checked = isDealer,
-                        onCheckedChange = { isDealer = it }
-                    )
                 }
             }
 
@@ -121,9 +129,9 @@ fun ManualSetupScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            "已選牌面 (點擊牌可移除):",
+                            "我的起手牌 (${selectedTiles.size}/$targetTileCount):",
                             color = AccentGold,
-                            fontSize = 14.sp,
+                            fontSize = 13.sp,
                             fontWeight = FontWeight.Bold
                         )
                         if (selectedTiles.isNotEmpty()) {
@@ -133,14 +141,14 @@ fun ManualSetupScreen(
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(6.dp))
 
                     if (selectedTiles.isEmpty()) {
                         Text(
-                            "請在下方點選牌面，已啟動 4 張上限防呆",
+                            "請在下方點選牌面加入，已啟動全場 4 張上限防呆",
                             color = TextMuted,
-                            fontSize = 13.sp,
-                            modifier = Modifier.padding(vertical = 12.dp)
+                            fontSize = 12.sp,
+                            modifier = Modifier.padding(vertical = 10.dp)
                         )
                     } else {
                         Row(
@@ -162,7 +170,7 @@ fun ManualSetupScreen(
                 }
             }
 
-            // 牌面選擇區 (帶 4 張上限防呆)
+            // 牌面選擇區
             Card(
                 colors = CardDefaults.cardColors(containerColor = CardBackground),
                 shape = RoundedCornerShape(12.dp),
@@ -184,7 +192,7 @@ fun ManualSetupScreen(
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(10.dp))
 
                     Row(
                         modifier = Modifier
@@ -224,11 +232,11 @@ fun ManualSetupScreen(
 
             // 開始對局按鈕
             Button(
-                onClick = { onStartGameWithHand(selectedTiles.toList(), isDealer) },
+                onClick = { onStartGameWithHand(selectedTiles.toList(), selectedDealer) },
                 enabled = selectedTiles.size == targetTileCount,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(52.dp),
+                    .height(50.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = AccentGold,
                     disabledContainerColor = Color.DarkGray
@@ -236,10 +244,14 @@ fun ManualSetupScreen(
                 shape = RoundedCornerShape(12.dp)
             ) {
                 Text(
-                    text = if (selectedTiles.size == targetTileCount) "開始 AI 決策對局 🚀" else "請選滿 $targetTileCount 張手牌 (${selectedTiles.size}/$targetTileCount)",
+                    text = if (selectedTiles.size == targetTileCount) {
+                        "開始 AI 決策對局 (${if (isSelfDealer) "我當莊先攻" else "${selectedDealer.title}當莊先攻"}) 🚀"
+                    } else {
+                        "請選滿 $targetTileCount 張起手手牌 (${selectedTiles.size}/$targetTileCount)"
+                    },
                     color = if (selectedTiles.size == targetTileCount) Color.Black else Color.Gray,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 16.sp
+                    fontSize = 15.sp
                 )
             }
         }

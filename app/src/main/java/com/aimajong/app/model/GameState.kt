@@ -1,6 +1,16 @@
 package com.aimajong.app.model
 
 /**
+ * 麻將局內狀態階段
+ */
+enum class TurnPhase(val description: String) {
+    AWAITING_DRAW("等待摸牌"),
+    AWAITING_DISCARD("等待出牌"),
+    AWAITING_CALL_RESPONSE("等待鳴牌判定 (吃/碰/槓/胡)"),
+    GAME_OVER("牌局結束")
+}
+
+/**
  * 完整牌局當前狀態
  */
 data class GameState(
@@ -20,10 +30,13 @@ data class GameState(
         PlayerSeat.SHANG_JIA to emptyList()
     ),
     val currentTurn: Int = 1,
-    val activeSeat: PlayerSeat = PlayerSeat.SELF,
+    val currentTurnPlayer: PlayerSeat = PlayerSeat.SELF,
+    val phase: TurnPhase = TurnPhase.AWAITING_DISCARD,
     val lastDiscard: Pair<PlayerSeat, MahjongTile>? = null,
     val history: List<GameActionRecord> = emptyList(),
-    val isGameOver: Boolean = false
+    val isGameOver: Boolean = false,
+    val winnerSeat: PlayerSeat? = null,
+    val loserSeat: PlayerSeat? = null // 放槍者，若自摸則為 null
 ) {
     /**
      * 自己手牌張數（不含已副露的吃碰槓牌與花牌）
@@ -37,14 +50,22 @@ data class GameState(
     val totalHandWeight: Int get() = concealedHandCount + (melds.size * 3)
 
     /**
-     * 當前自己是否處於「可以打牌」的狀態 (總張數為 17 張)
+     * 當前自己是否處於「可以打牌」的狀態 (輪到自己且在出牌階段)
      */
-    val canSelfDiscard: Boolean get() = totalHandWeight >= 17
+    val canSelfDiscard: Boolean get() =
+        !isGameOver && currentTurnPlayer == PlayerSeat.SELF && phase == TurnPhase.AWAITING_DISCARD
 
     /**
-     * 當前自己是否處於「需要摸牌」的狀態 (總張數為 16 張)
+     * 當前自己是否處於「可以摸牌」的狀態 (輪到自己且在摸牌階段)
      */
-    val canSelfDraw: Boolean get() = totalHandWeight <= 16
+    val canSelfDraw: Boolean get() =
+        !isGameOver && currentTurnPlayer == PlayerSeat.SELF && phase == TurnPhase.AWAITING_DRAW
+
+    /**
+     * 當前是否處於他家打牌後的鳴牌判定階段
+     */
+    val isInCallResponsePhase: Boolean get() =
+        !isGameOver && phase == TurnPhase.AWAITING_CALL_RESPONSE
 
     /**
      * 總共已看見的某張牌的數量（手牌 + 所有人牌河 + 所有吃碰槓明牌）
@@ -143,12 +164,12 @@ data class GameState(
  * AI 策略推薦結果
  */
 data class AIDecisionResult(
-    val recommendedAction: String, // 例如 "打 九萬" 或 "碰 六筒"
+    val recommendedAction: String,
     val optionsProbability: List<DecisionChoiceProbability>,
     val explanationNote: String = ""
 )
 
 data class DecisionChoiceProbability(
     val actionText: String,
-    val probability: Float // 0.0 ~ 1.0
+    val probability: Float
 )

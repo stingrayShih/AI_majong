@@ -5,6 +5,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.compose.runtime.*
+import com.aimajong.app.model.PlayerSeat
 import com.aimajong.app.ui.screens.*
 import com.aimajong.app.ui.theme.AIMajongTheme
 import com.aimajong.app.ui.viewmodel.GameViewModel
@@ -28,8 +29,8 @@ class MainActivity : ComponentActivity() {
 
                     "manual_setup" -> ManualSetupScreen(
                         onBack = { currentScreen = "home" },
-                        onStartGameWithHand = { tiles, isDealer ->
-                            gameViewModel.startNewGame(tiles, isDealer)
+                        onStartGameWithHand = { tiles, dealerSeat ->
+                            gameViewModel.startNewGame(tiles, dealerSeat)
                             currentScreen = "game"
                         }
                     )
@@ -37,7 +38,7 @@ class MainActivity : ComponentActivity() {
                     "photo_scan" -> PhotoScanScreen(
                         onBack = { currentScreen = "home" },
                         onPhotoRecognized = { tiles ->
-                            gameViewModel.startNewGame(tiles, isDealer = false)
+                            gameViewModel.startNewGame(tiles, PlayerSeat.SELF)
                             currentScreen = "game"
                         }
                     )
