@@ -5,6 +5,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import com.aimajong.app.model.PlayerSeat
 import com.aimajong.app.ui.screens.*
 import com.aimajong.app.ui.theme.AIMajongTheme
@@ -18,17 +19,23 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContent {
             AIMajongTheme {
-                var currentScreen by remember { mutableStateOf("home") }
+                // 使用 rememberSaveable 確保旋轉螢幕、切換 App 返回後不丟失畫面狀態
+                var currentScreen by rememberSaveable { mutableStateOf("home") }
+                val gameState by gameViewModel.gameState.collectAsState()
 
                 when (currentScreen) {
                     "home" -> HomeScreen(
+                        gameState = gameState,
+                        onResumeGame = { currentScreen = "game" },
                         onStartPhotoScan = { currentScreen = "photo_scan" },
                         onStartManualSetup = { currentScreen = "manual_setup" },
                         onViewHistory = { currentScreen = "history" }
                     )
 
                     "manual_setup" -> ManualSetupScreen(
-                        onBack = { currentScreen = "home" },
+                        onBack = {
+                            currentScreen = if (gameState.handTiles.isNotEmpty() && !gameState.isGameOver) "game" else "home"
+                        },
                         onStartGameWithHand = { tiles, dealerSeat ->
                             gameViewModel.startNewGame(tiles, dealerSeat)
                             currentScreen = "game"
@@ -36,7 +43,9 @@ class MainActivity : ComponentActivity() {
                     )
 
                     "photo_scan" -> PhotoScanScreen(
-                        onBack = { currentScreen = "home" },
+                        onBack = {
+                            currentScreen = if (gameState.handTiles.isNotEmpty() && !gameState.isGameOver) "game" else "home"
+                        },
                         onPhotoRecognized = { tiles, dealerSeat ->
                             gameViewModel.startNewGame(tiles, dealerSeat)
                             currentScreen = "game"
@@ -49,10 +58,11 @@ class MainActivity : ComponentActivity() {
                     )
 
                     "history" -> {
-                        val state by gameViewModel.gameState.collectAsState()
                         HistoryScreen(
-                            records = state.history,
-                            onBack = { currentScreen = "home" }
+                            records = gameState.history,
+                            onBack = {
+                                currentScreen = if (gameState.handTiles.isNotEmpty() && !gameState.isGameOver) "game" else "home"
+                            }
                         )
                     }
                 }
