@@ -51,10 +51,6 @@ data class GameState(
     val isInCallResponsePhase: Boolean get() =
         !isGameOver && phase == TurnPhase.AWAITING_CALL_RESPONSE
 
-    /**
-     * 自己是否可以對當前打出的牌進行鳴牌判定
-     * 規則：自己打出的牌，自己【絕對不能】吃碰槓！只能由他家鳴牌
-     */
     val canSelfCallLastDiscard: Boolean get() =
         isInCallResponsePhase && lastDiscard != null && lastDiscard.first != PlayerSeat.SELF
 
@@ -81,26 +77,40 @@ data class GameState(
         return (maxTotal - countVisibleTile(tile)).coerceAtLeast(0)
     }
 
+    /**
+     * 碰牌：花牌不能碰；自己打出的牌不能碰
+     */
     fun canPeng(targetTile: MahjongTile): Boolean {
-        // 自己打的不能碰
+        if (targetTile.isFlower) return false
         if (lastDiscard?.first == PlayerSeat.SELF) return false
         return handTiles.count { it.id == targetTile.id } >= 2
     }
 
+    /**
+     * 明槓：花牌不能槓；自己打出的牌不能槓
+     */
     fun canMingGang(targetTile: MahjongTile): Boolean {
-        // 自己打的不能槓
+        if (targetTile.isFlower) return false
         if (lastDiscard?.first == PlayerSeat.SELF) return false
         return handTiles.count { it.id == targetTile.id } >= 3
     }
 
+    /**
+     * 暗槓：花牌不能暗槓
+     */
     fun getAnGangOptions(): List<MahjongTile> {
-        return handTiles.groupBy { it.id }
+        return handTiles
+            .filter { !it.isFlower }
+            .groupBy { it.id }
             .filter { it.value.size >= 4 }
             .map { it.value.first() }
     }
 
+    /**
+     * 吃牌：花牌不能吃
+     */
     fun getChiCombinations(targetTile: MahjongTile): List<Pair<MahjongTile, MahjongTile>> {
-        // 嚴格限定：自己打的不能吃，且只有上家打的才可以吃
+        if (targetTile.isFlower) return emptyList()
         if (lastDiscard?.first != PlayerSeat.SHANG_JIA) return emptyList()
 
         if (targetTile.suit != TileSuit.WAN &&

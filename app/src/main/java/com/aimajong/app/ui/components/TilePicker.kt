@@ -1,7 +1,6 @@
 package com.aimajong.app.ui.components
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -25,11 +24,18 @@ import com.aimajong.app.ui.theme.MahjongGreenDark
 @Composable
 fun TilePickerDialog(
     title: String = "請選擇牌面",
+    initialSuit: TileSuit = TileSuit.HONOR, // 預設優先開啟【字牌】頁面
+    allowFlower: Boolean = false,           // 打牌、吃碰槓一律禁止選擇花牌
     getRemainingCount: ((MahjongTile) -> Int)? = null,
     onDismissRequest: () -> Unit,
     onTileSelected: (MahjongTile) -> Unit
 ) {
-    var selectedSuit by remember { mutableStateOf(TileSuit.WAN) }
+    var selectedSuit by remember { mutableStateOf(initialSuit) }
+    val availableSuits = remember(allowFlower) {
+        if (allowFlower) TileSuit.values().toList()
+        else TileSuit.values().filter { it != TileSuit.FLOWER }
+    }
+
     val tilesForSuit = remember(selectedSuit) {
         MahjongTile.getTilesBySuit(selectedSuit)
     }
@@ -55,21 +61,22 @@ fun TilePickerDialog(
                     modifier = Modifier.padding(bottom = 12.dp)
                 )
 
-                // 花色分類切換 Tab
+                // 花色分類切換 Tab (預設開啟字牌)
                 TabRow(
-                    selectedTabIndex = selectedSuit.ordinal,
+                    selectedTabIndex = availableSuits.indexOf(selectedSuit).coerceAtLeast(0),
                     containerColor = MahjongGreenDark,
                     contentColor = AccentGold,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    TileSuit.values().forEach { suit ->
+                    availableSuits.forEach { suit ->
                         Tab(
                             selected = selectedSuit == suit,
                             onClick = { selectedSuit = suit },
                             text = {
                                 Text(
                                     text = suit.displayName.replace("子", ""),
-                                    fontSize = 12.sp
+                                    fontSize = 12.sp,
+                                    fontWeight = if (selectedSuit == suit) FontWeight.Bold else FontWeight.Normal
                                 )
                             }
                         )

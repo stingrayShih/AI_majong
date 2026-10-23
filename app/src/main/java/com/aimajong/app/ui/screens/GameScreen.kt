@@ -60,7 +60,6 @@ fun GameScreen(
                             fontWeight = FontWeight.Bold
                         )
                         Spacer(modifier = Modifier.width(8.dp))
-                        // 點選可直接換莊家
                         val dealerName = if (state.dealerSeat == PlayerSeat.SELF) "我當莊" else "${state.dealerSeat.title}當莊"
                         Surface(
                             shape = RoundedCornerShape(4.dp),
@@ -123,12 +122,26 @@ fun GameScreen(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(8.dp)) {
-                    Text(
-                        "牌桌動態 (各家牌河與副露明牌)",
-                        color = AccentGold,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "牌桌動態 (各家牌河與副露明牌)",
+                            color = AccentGold,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        if (state.flowers.isNotEmpty()) {
+                            Text(
+                                "我的花牌: ${state.flowers.joinToString(" ") { it.name }}",
+                                color = Color(0xFFCE93D8),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
                     Spacer(modifier = Modifier.height(4.dp))
 
                     PlayerRiverAndMeldRow("上家", state.discards[PlayerSeat.SHANG_JIA] ?: emptyList(), state.otherMelds[PlayerSeat.SHANG_JIA] ?: emptyList(), isCurrent = state.currentTurnPlayer == PlayerSeat.SHANG_JIA)
@@ -258,6 +271,8 @@ fun GameScreen(
                             onClick = {
                                 if (state.isGameOver) {
                                     Toast.makeText(context, "牌局已結束！", Toast.LENGTH_SHORT).show()
+                                } else if (tile.isFlower) {
+                                    Toast.makeText(context, "花牌不能打出！", Toast.LENGTH_SHORT).show()
                                 } else if (state.canSelfDiscard) {
                                     viewModel.onDiscardTile(PlayerSeat.SELF, tile)
                                 } else {
@@ -283,28 +298,32 @@ fun GameScreen(
         }
     }
 
-    // 彈窗: 摸牌選擇器
+    // 摸牌選擇器 (預設優先開啟【字牌】，支援花牌摸入後自動補花)
     if (showTilePickerForDraw) {
         TilePickerDialog(
-            title = "選擇摸到的牌",
+            title = "選擇摸到的牌 (若為花牌將自動補花)",
+            initialSuit = TileSuit.HONOR,
+            allowFlower = true, // 只有摸牌可能摸到花牌
             getRemainingCount = { tile -> state.remainingCount(tile) },
             onDismissRequest = { showTilePickerForDraw = false },
             onTileSelected = { tile -> viewModel.onDrawTile(tile) }
         )
     }
 
-    // 彈窗: 記錄當前輪到的他家出牌
+    // 記錄當前輪到的他家出牌 (預設優先開啟【字牌】，花牌禁止打出)
     if (showTilePickerForOtherTurn) {
         val currentSeat = state.currentTurnPlayer
         TilePickerDialog(
             title = "選擇 ${currentSeat.title} 打出的牌",
+            initialSuit = TileSuit.HONOR,
+            allowFlower = false, // 花牌不能打出！
             getRemainingCount = { tile -> state.remainingCount(tile) },
             onDismissRequest = { showTilePickerForOtherTurn = false },
             onTileSelected = { tile -> viewModel.onOtherTurnAction(currentSeat, tile) }
         )
     }
 
-    // 彈窗: 我吃/碰/槓
+    // 我吃/碰/槓
     if (showSelfMeldDialog) {
         SelfMeldDialog(
             state = state,
@@ -313,7 +332,7 @@ fun GameScreen(
         )
     }
 
-    // 彈窗: 暗槓選擇
+    // 暗槓選擇
     if (showAnGangDialog) {
         AnGangDialog(
             anGangTiles = state.getAnGangOptions(),
@@ -325,7 +344,7 @@ fun GameScreen(
         )
     }
 
-    // 彈窗: 他家鳴牌 (吃碰槓)
+    // 他家鳴牌 (徹底修正：預設不選哪家，強制手動點選，絕不記錄到自己！)
     if (showOtherMeldDialog) {
         OtherPlayerMeldDialog(
             state = state,
@@ -337,7 +356,7 @@ fun GameScreen(
         )
     }
 
-    // 彈窗: 胡牌記錄
+    // 胡牌記錄
     if (showHuDialog) {
         HuDialog(
             state = state,
@@ -349,7 +368,7 @@ fun GameScreen(
         )
     }
 
-    // 彈窗: 隨時更換莊家
+    // 隨時更換莊家
     if (showChangeDealerDialog) {
         ChangeDealerDialog(
             currentDealer = state.dealerSeat,
@@ -439,8 +458,7 @@ fun DynamicActionBar(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    // 只有【他家打出的牌】，自己才能按「我 吃/碰/槓」！
-                    // 自己打出的牌，自己【絕對不能】吃碰槓！
+                    // 自己打出的牌，絕對不能自己吃碰槓！
                     if (!isMyDiscard) {
                         Button(
                             onClick = onSelfMeldClicked,
@@ -451,7 +469,7 @@ fun DynamicActionBar(
                         }
                     }
 
-                    // 他家吃碰槓 (順位跳轉)
+                    // 他家吃碰槓 (強制手動選哪一家，絕不計入自己)
                     Button(
                         onClick = onOtherMeldClicked,
                         modifier = Modifier.weight(1.2f),
@@ -470,15 +488,15 @@ fun DynamicActionBar(
                     }
                 }
 
-                // 【過】按鈕：設計成【淺色、超亮、超明顯】，無人吃碰槓時換下家摸牌
+                // 【過】按鈕：淺亮白金底色，非常醒目
                 Button(
                     onClick = onPassCallClicked,
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(44.dp),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFFFFF9C4), // 淺亮象牙金
-                        contentColor = Color(0xFF1B5E20)     // 深綠字高對比
+                        containerColor = Color(0xFFFFF9C4),
+                        contentColor = Color(0xFF1B5E20)
                     ),
                     shape = RoundedCornerShape(10.dp),
                     elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp)
@@ -625,7 +643,7 @@ fun PlayerRiverAndMeldRow(seatName: String, discards: List<MahjongTile>, melds: 
 }
 
 /**
- * 自己鳴牌對話框 (吃、碰、明槓) - 自己打出的牌絕不能吃碰槓
+ * 自己鳴牌對話框 (吃、碰、明槓) - 花牌禁止吃碰槓，自己打出的牌禁止吃碰槓
  */
 @Composable
 fun SelfMeldDialog(
@@ -650,8 +668,12 @@ fun SelfMeldDialog(
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                if (targetTile == null || lastDiscard.first == PlayerSeat.SELF) {
-                    Text("自己打出的牌不能自己吃碰槓！", color = Color.Red, fontSize = 13.sp)
+                if (targetTile == null || lastDiscard.first == PlayerSeat.SELF || targetTile.isFlower) {
+                    Text(
+                        if (targetTile?.isFlower == true) "花牌不能吃碰槓！" else "自己打出的牌不能自己吃碰槓！",
+                        color = Color.Red,
+                        fontSize = 13.sp
+                    )
                 } else {
                     Text(
                         "目標牌: ${lastDiscard.first.title} 打出的 ${targetTile.name}",
@@ -774,7 +796,7 @@ fun AnGangDialog(
 }
 
 /**
- * 他家鳴牌對話框
+ * 他家鳴牌對話框 (徹底防呆：預設不選任何一家，強制使用者明確點選上家/對家/下家，絕不記錄到自己！)
  */
 @Composable
 fun OtherPlayerMeldDialog(
@@ -784,39 +806,53 @@ fun OtherPlayerMeldDialog(
 ) {
     val lastDiscard = state.lastDiscard ?: return
     val targetTile = lastDiscard.second
-    var selectedSeat by remember { mutableStateOf(lastDiscard.first.next()) }
+
+    // 只有其他三家（排除自己、排除打出該張牌的玩家）
+    val eligibleOtherSeats = remember(lastDiscard) {
+        listOf(PlayerSeat.SHANG_JIA, PlayerSeat.DUI_JIA, PlayerSeat.XIA_JIA)
+            .filter { it != lastDiscard.first }
+    }
+
+    // 預設不選取任何一家，強制使用者點選！
+    var selectedSeat by remember { mutableStateOf<PlayerSeat?>(null) }
     var selectedType by remember { mutableStateOf(ActionType.PENG) }
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(shape = RoundedCornerShape(16.dp), color = CardBackground, modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Text("記錄他家吃碰槓 (順位將跳轉)", color = AccentGold, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                Spacer(modifier = Modifier.height(8.dp))
-                Text("目標牌: ${lastDiscard.first.title} 打出的 ${targetTile.name}", color = TextLight, fontSize = 12.sp)
+                Spacer(modifier = Modifier.height(6.dp))
+                Text("目標牌: ${lastDiscard.first.title} 打出的 [${targetTile.name}]", color = TextLight, fontSize = 12.sp)
 
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(12.dp))
 
-                Text("哪一家鳴牌：", color = TextLight, fontSize = 12.sp)
-                // 排除打出該牌的那一家
-                val eligibleSeats = listOf(PlayerSeat.SHANG_JIA, PlayerSeat.DUI_JIA, PlayerSeat.XIA_JIA)
-                    .filter { it != lastDiscard.first }
-
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    eligibleSeats.forEach { seat ->
-                        FilterChip(
-                            selected = selectedSeat == seat,
+                Text("👉 請先點選是哪一家鳴牌：", color = AccentGold, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(4.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    eligibleOtherSeats.forEach { seat ->
+                        val isSelected = selectedSeat == seat
+                        Button(
                             onClick = { selectedSeat = seat },
-                            label = { Text(seat.title, fontSize = 11.sp) },
-                            modifier = Modifier.weight(1f)
-                        )
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (isSelected) AccentGold else MahjongGreenDark,
+                                contentColor = if (isSelected) Color.Black else TextLight
+                            ),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.weight(1f).height(38.dp),
+                            contentPadding = PaddingValues(0.dp)
+                        ) {
+                            Text(seat.title, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        }
                     }
                 }
 
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(12.dp))
 
                 Text("鳴牌類型：", color = TextLight, fontSize = 12.sp)
-                val isShangJiaOfTarget = lastDiscard.first.next() == selectedSeat
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                Spacer(modifier = Modifier.height(4.dp))
+                val isShangJiaOfTarget = selectedSeat != null && lastDiscard.first.next() == selectedSeat
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    // 吃牌僅目標打牌者的下家（相對於該玩家是上家打牌）可吃
                     if (isShangJiaOfTarget) {
                         FilterChip(
                             selected = selectedType == ActionType.CHI,
@@ -836,22 +872,34 @@ fun OtherPlayerMeldDialog(
                     )
                 }
 
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(14.dp))
 
+                // 當未選擇哪一家時，按鈕反灰停用
+                val canConfirm = selectedSeat != null && selectedSeat != PlayerSeat.SELF
                 Button(
                     onClick = {
+                        val currentTarget = selectedSeat ?: return@Button
                         val tiles = when (selectedType) {
                             ActionType.PENG -> listOf(targetTile, targetTile, targetTile)
                             ActionType.GANG_MING -> listOf(targetTile, targetTile, targetTile, targetTile)
                             else -> listOf(targetTile, targetTile, targetTile)
                         }
                         val meld = Meld(type = selectedType, tiles = tiles, triggerTile = targetTile, targetSeat = lastDiscard.first)
-                        onMeldConfirmed(selectedSeat, meld)
+                        onMeldConfirmed(currentTarget, meld)
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = AccentGold),
-                    modifier = Modifier.fillMaxWidth()
+                    enabled = canConfirm,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = AccentGold,
+                        disabledContainerColor = Color.DarkGray
+                    ),
+                    modifier = Modifier.fillMaxWidth().height(44.dp)
                 ) {
-                    Text("確認鳴牌並跳轉順位至【${selectedSeat.title}】", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    Text(
+                        text = if (canConfirm) "確認【${selectedSeat!!.title}】鳴牌並跳轉順位" else "⚠️ 請先點擊上方選擇哪一家",
+                        color = if (canConfirm) Color.Black else Color.LightGray,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp
+                    )
                 }
 
                 TextButton(onClick = onDismiss) { Text("取消", color = TextMuted) }

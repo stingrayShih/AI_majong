@@ -35,7 +35,9 @@ fun ManualSetupScreen(
     val isSelfDealer = selectedDealer == PlayerSeat.SELF
     val targetTileCount = if (isSelfDealer) 17 else 16
 
-    var activeSuit by remember { mutableStateOf(TileSuit.WAN) }
+    // 起手手牌絕不能包含花牌，花牌不提供選取
+    val availableSuits = remember { TileSuit.values().filter { it != TileSuit.FLOWER } }
+    var activeSuit by remember { mutableStateOf(TileSuit.HONOR) } // 預設先開字牌
     val suitTiles = remember(activeSuit) { MahjongTile.getTilesBySuit(activeSuit) }
 
     Scaffold(
@@ -84,7 +86,7 @@ fun ManualSetupScreen(
                 .padding(horizontal = 12.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.SpaceBetween
         ) {
-            // 【最上方：開局莊家設定卡片】超顯眼、大按鈕
+            // 【最上方：開局莊家設定卡片】
             Card(
                 colors = CardDefaults.cardColors(containerColor = CardBackground),
                 shape = RoundedCornerShape(12.dp),
@@ -171,7 +173,7 @@ fun ManualSetupScreen(
 
                     if (selectedTiles.isEmpty()) {
                         Text(
-                            "點選下方牌面加入（同一種牌最多 4 張，花牌 1 張）",
+                            "點選下方牌面加入（同一種牌最多 4 張，花牌禁止加入起手手牌）",
                             color = TextMuted,
                             fontSize = 12.sp,
                             modifier = Modifier.padding(vertical = 10.dp)
@@ -196,7 +198,7 @@ fun ManualSetupScreen(
                 }
             }
 
-            // 牌面選擇區
+            // 牌面選擇區 (排除花牌)
             Card(
                 colors = CardDefaults.cardColors(containerColor = CardBackground),
                 shape = RoundedCornerShape(12.dp),
@@ -204,12 +206,12 @@ fun ManualSetupScreen(
             ) {
                 Column(modifier = Modifier.padding(10.dp)) {
                     TabRow(
-                        selectedTabIndex = activeSuit.ordinal,
+                        selectedTabIndex = availableSuits.indexOf(activeSuit).coerceAtLeast(0),
                         containerColor = MahjongGreenDark,
                         contentColor = AccentGold,
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        TileSuit.values().forEach { suit ->
+                        availableSuits.forEach { suit ->
                             Tab(
                                 selected = activeSuit == suit,
                                 onClick = { activeSuit = suit },
