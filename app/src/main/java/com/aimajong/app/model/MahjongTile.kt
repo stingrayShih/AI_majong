@@ -112,6 +112,45 @@ data class MahjongTile(
         }
 
         /**
+         * 依名稱、簡稱、代碼模糊搜尋牌
+         */
+        fun findByQuery(query: String): MahjongTile? {
+            val q = query.trim().lowercase()
+            if (q.isEmpty()) return null
+
+            // 1. 完全比對 ID, Name, ShortCode
+            ALL_TILES_LIST.find { 
+                it.id.equals(q, ignoreCase = true) || 
+                it.name.equals(q, ignoreCase = true) || 
+                it.shortCode.equals(q, ignoreCase = true) 
+            }?.let { return it }
+
+            // 2. 常見別名轉換
+            val normalized = q
+                .replace("索", "條")
+                .replace("發財", "青發")
+                .replace("白身", "白板")
+                .replace("1", "一").replace("2", "二").replace("3", "三")
+                .replace("4", "四").replace("5", "五").replace("6", "六")
+                .replace("7", "七").replace("8", "八").replace("9", "九")
+
+            ALL_TILES_LIST.find { it.name == normalized }?.let { return it }
+
+            // 3. 單字風牌 / 三元牌
+            when (q) {
+                "東" -> return findById("east")
+                "南" -> return findById("south")
+                "西" -> return findById("west")
+                "北" -> return findById("north")
+                "中" -> return findById("zhong")
+                "發" -> return findById("fa")
+                "白" -> return findById("bai")
+            }
+
+            return null
+        }
+
+        /**
          * 取得某張牌在全副牌中的上限總數（普通牌 4 張，花牌 1 張）
          */
         fun getMaxCount(tile: MahjongTile): Int = if (tile.isFlower) 1 else 4

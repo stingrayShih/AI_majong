@@ -29,7 +29,8 @@ class MainActivity : ComponentActivity() {
                         onResumeGame = { currentScreen = "game" },
                         onStartPhotoScan = { currentScreen = "photo_scan" },
                         onStartManualSetup = { currentScreen = "manual_setup" },
-                        onViewHistory = { currentScreen = "history" }
+                        onViewHistory = { currentScreen = "history" },
+                        onOpenSettings = { currentScreen = "settings" }
                     )
 
                     "manual_setup" -> ManualSetupScreen(
@@ -43,6 +44,8 @@ class MainActivity : ComponentActivity() {
                     )
 
                     "photo_scan" -> PhotoScanScreen(
+                        settingsRepo = gameViewModel.settingsRepo,
+                        apiClient = gameViewModel.vllmApiClient,
                         onBack = {
                             currentScreen = if (gameState.handTiles.isNotEmpty() && !gameState.isGameOver) "game" else "home"
                         },
@@ -54,12 +57,23 @@ class MainActivity : ComponentActivity() {
 
                     "game" -> GameScreen(
                         viewModel = gameViewModel,
-                        onBackToHome = { currentScreen = "home" }
+                        onBackToHome = { currentScreen = "home" },
+                        onOpenSettings = { currentScreen = "settings" }
                     )
 
                     "history" -> {
                         HistoryScreen(
                             records = gameState.history,
+                            onBack = {
+                                currentScreen = if (gameState.handTiles.isNotEmpty() && !gameState.isGameOver) "game" else "home"
+                            }
+                        )
+                    }
+
+                    "settings" -> {
+                        SettingsScreen(
+                            settingsRepo = gameViewModel.settingsRepo,
+                            apiClient = gameViewModel.vllmApiClient,
                             onBack = {
                                 currentScreen = if (gameState.handTiles.isNotEmpty() && !gameState.isGameOver) "game" else "home"
                             }

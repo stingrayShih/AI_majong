@@ -8,6 +8,7 @@ import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -20,109 +21,118 @@ import androidx.compose.ui.unit.sp
 import com.aimajong.app.model.GameState
 import com.aimajong.app.ui.theme.*
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
     gameState: GameState,
     onResumeGame: () -> Unit,
     onStartPhotoScan: () -> Unit,
     onStartManualSetup: () -> Unit,
-    onViewHistory: () -> Unit
+    onViewHistory: () -> Unit,
+    onOpenSettings: () -> Unit
 ) {
-    // 檢查是否有正在進行中且未結束的對局
     val hasActiveGame = gameState.handTiles.isNotEmpty() && !gameState.isGameOver
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MahjongFeltGreen)
-            .padding(24.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-            modifier = Modifier.fillMaxWidth()
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("🀄 AI 台灣麻將助手", color = TextLight, fontSize = 18.sp, fontWeight = FontWeight.Bold) },
+                actions = {
+                    IconButton(onClick = onOpenSettings) {
+                        Icon(Icons.Default.Settings, contentDescription = "設定", tint = AccentGold)
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MahjongGreenDark)
+            )
+        },
+        containerColor = MahjongFeltGreen
+    ) { padding ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(20.dp),
+            contentAlignment = Alignment.Center
         ) {
-            // App 標題
-            Text(
-                text = "🀄 台灣 16 張麻將",
-                color = AccentGold,
-                fontSize = 28.sp,
-                fontWeight = FontWeight.Bold
-            )
-            Text(
-                text = "AI 實戰決策輔助 (vLLM d3-flash)",
-                color = TextLight,
-                fontSize = 15.sp
-            )
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // 【繼續當前對局】卡片：若有進行中對局，顯示在最頂部，超大、超明顯
-            if (hasActiveGame) {
-                Card(
-                    onClick = onResumeGame,
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF2E7D32)),
-                    border = androidx.compose.foundation.BorderStroke(2.dp, AccentGold),
-                    shape = RoundedCornerShape(16.dp),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .padding(18.dp)
-                            .fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                // 【繼續當前對局】卡片
+                if (hasActiveGame) {
+                    Card(
+                        onClick = onResumeGame,
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF2E7D32)),
+                        border = androidx.compose.foundation.BorderStroke(2.dp, AccentGold),
+                        shape = RoundedCornerShape(16.dp),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.PlayArrow,
-                            contentDescription = null,
-                            tint = AccentGold,
-                            modifier = Modifier.size(40.dp)
-                        )
-                        Column {
-                            Text(
-                                text = "▶ 繼續進行中的牌局",
-                                color = Color.White,
-                                fontSize = 19.sp,
-                                fontWeight = FontWeight.Bold
+                        Row(
+                            modifier = Modifier
+                                .padding(18.dp)
+                                .fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(16.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.PlayArrow,
+                                contentDescription = null,
+                                tint = AccentGold,
+                                modifier = Modifier.size(38.dp)
                             )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = "目前進度：第 ${gameState.currentTurn} 巡，輪到【${gameState.currentTurnPlayer.title}】",
-                                color = AccentGold,
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold
-                            )
+                            Column {
+                                Text(
+                                    text = "▶ 繼續進行中的牌局",
+                                    color = Color.White,
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Spacer(modifier = Modifier.height(3.dp))
+                                Text(
+                                    text = "目前第 ${gameState.currentTurn} 巡，輪到【${gameState.currentTurnPlayer.title}】",
+                                    color = AccentGold,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
                         }
                     }
                 }
+
+                // 功能 1: 手動選牌
+                MenuActionCard(
+                    title = if (hasActiveGame) "重新開新局 (手動選牌)" else "手動選取手牌開局",
+                    subtitle = "自選莊家與起手手牌 (支援一鍵範例牌)",
+                    icon = Icons.Default.Edit,
+                    onClick = onStartManualSetup
+                )
+
+                // 功能 2: 拍照辨識
+                MenuActionCard(
+                    title = if (hasActiveGame) "重新開新局 (拍照辨識)" else "拍照辨識手牌開局",
+                    subtitle = "拍攝實體 16/17 張手牌由 AI 辨識",
+                    icon = Icons.Default.CameraAlt,
+                    onClick = onStartPhotoScan
+                )
+
+                // 功能 3: 牌局歷史
+                MenuActionCard(
+                    title = "牌局歷史紀錄",
+                    subtitle = "回顧過往牌局走勢與操作記錄",
+                    icon = Icons.Default.History,
+                    onClick = onViewHistory
+                )
+
+                // 功能 4: 伺服器設定
+                MenuActionCard(
+                    title = "AI 伺服器與模型設定",
+                    subtitle = "配置 vLLM d3-flash URL、API Key 與連線測試",
+                    icon = Icons.Default.Settings,
+                    onClick = onOpenSettings
+                )
             }
-
-            // 功能按鈕 1: 手動選牌新對局
-            MenuActionCard(
-                title = if (hasActiveGame) "重新開新局 (手動選牌)" else "手動選取手牌開局",
-                subtitle = "使用磁磚選擇器設定莊家與起手手牌",
-                icon = Icons.Default.Edit,
-                onClick = onStartManualSetup
-            )
-
-            // 功能按鈕 2: 拍照辨識新對局
-            MenuActionCard(
-                title = if (hasActiveGame) "重新開新局 (拍照辨識)" else "拍照辨識手牌開局",
-                subtitle = "拍攝實體手牌，AI 自動辨識入庫",
-                icon = Icons.Default.CameraAlt,
-                onClick = onStartPhotoScan
-            )
-
-            // 功能按鈕 3: 歷史紀錄
-            MenuActionCard(
-                title = "牌局歷史紀錄",
-                subtitle = "回顧本局及過往走勢與決策過程",
-                icon = Icons.Default.History,
-                onClick = onViewHistory
-            )
         }
     }
 }
@@ -143,7 +153,7 @@ fun MenuActionCard(
     ) {
         Row(
             modifier = Modifier
-                .padding(16.dp)
+                .padding(14.dp)
                 .fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(14.dp)
@@ -152,16 +162,16 @@ fun MenuActionCard(
                 imageVector = icon,
                 contentDescription = null,
                 tint = AccentGold,
-                modifier = Modifier.size(32.dp)
+                modifier = Modifier.size(28.dp)
             )
             Column {
                 Text(
                     text = title,
                     color = TextLight,
-                    fontSize = 16.sp,
+                    fontSize = 15.sp,
                     fontWeight = FontWeight.Bold
                 )
-                Spacer(modifier = Modifier.height(3.dp))
+                Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = subtitle,
                     color = TextMuted,

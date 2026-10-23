@@ -11,6 +11,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Undo
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -33,7 +34,8 @@ import com.aimajong.app.ui.viewmodel.GameViewModel
 @Composable
 fun GameScreen(
     viewModel: GameViewModel,
-    onBackToHome: () -> Unit
+    onBackToHome: () -> Unit,
+    onOpenSettings: () -> Unit
 ) {
     val context = LocalContext.current
     val state by viewModel.gameState.collectAsState()
@@ -83,6 +85,7 @@ fun GameScreen(
                     }
                 },
                 actions = {
+                    // ↩ 復原上一步 (Undo)
                     IconButton(
                         onClick = {
                             val success = viewModel.undoLastAction()
@@ -98,6 +101,11 @@ fun GameScreen(
                             contentDescription = "復原",
                             tint = if (viewModel.canUndo) AccentGold else Color.Gray
                         )
+                    }
+
+                    // ⚙️ 伺服器設定
+                    IconButton(onClick = onOpenSettings) {
+                        Icon(Icons.Default.Settings, contentDescription = "設定", tint = AccentGold)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MahjongGreenDark)
@@ -286,7 +294,7 @@ fun GameScreen(
                 }
             }
 
-            // 4. 底部動作控制面板 (自摸與抓放槍明確區分為兩個直覺按鈕)
+            // 4. 底部動作控制面板
             DynamicActionBar(
                 state = state,
                 onDrawClicked = { showTilePickerForDraw = true },
@@ -353,7 +361,7 @@ fun GameScreen(
         )
     }
 
-    // 他家吃碰槓 (全面支援具體吃牌順子組合選擇，非碰牌！)
+    // 他家吃碰槓
     if (showOtherMeldDialog) {
         OtherPlayerMeldDialog(
             state = state,
@@ -365,7 +373,7 @@ fun GameScreen(
         )
     }
 
-    // 宣告胡牌 (自摸 vs 放槍直覺二分)
+    // 宣告胡牌
     if (showHuDialog) {
         HuDialog(
             state = state,
@@ -437,7 +445,7 @@ fun TurnStatusBanner(state: GameState) {
 }
 
 /**
- * 依據遊戲階段動態呈現的動作控制列 (自摸與放槍直覺拆為專屬按鈕)
+ * 依據遊戲階段動態呈現的動作控制列
  */
 @Composable
 fun DynamicActionBar(
@@ -464,7 +472,6 @@ fun DynamicActionBar(
     }
 
     when {
-        // 1. 他家出牌後的【鳴牌判定階段】(AWAITING_CALL_RESPONSE)
         state.isInCallResponsePhase -> {
             val isMyDiscard = state.lastDiscard?.first == PlayerSeat.SELF
 
@@ -473,7 +480,6 @@ fun DynamicActionBar(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    // 自己打出的牌，絕對不能自己吃碰槓！
                     if (!isMyDiscard) {
                         Button(
                             onClick = onSelfMeldClicked,
@@ -484,7 +490,6 @@ fun DynamicActionBar(
                         }
                     }
 
-                    // 他家吃碰槓
                     Button(
                         onClick = onOtherMeldClicked,
                         modifier = Modifier.weight(1.2f),
@@ -493,7 +498,6 @@ fun DynamicActionBar(
                         Text("他家吃碰槓", color = TextLight, fontSize = 13.sp)
                     }
 
-                    // 抓放槍 (胡牌) - 專屬直覺按鈕
                     Button(
                         onClick = onFangQiangClicked,
                         modifier = Modifier.weight(1.1f),
@@ -503,7 +507,6 @@ fun DynamicActionBar(
                     }
                 }
 
-                // 【過】按鈕：淺亮白金底色，非常醒目
                 Button(
                     onClick = onPassCallClicked,
                     modifier = Modifier
@@ -525,7 +528,6 @@ fun DynamicActionBar(
             }
         }
 
-        // 2. 輪到自己摸牌 (AWAITING_DRAW)
         state.canSelfDraw -> {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -538,7 +540,6 @@ fun DynamicActionBar(
                 ) {
                     Text("摸牌", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 }
-                // 自摸按鈕
                 Button(
                     onClick = onZiMoClicked,
                     modifier = Modifier.weight(1.2f).height(48.dp),
@@ -549,10 +550,9 @@ fun DynamicActionBar(
             }
         }
 
-        // 3. 輪到自己出牌 (AWAITING_DISCARD)
         state.canSelfDiscard -> {
             val anGangList = state.getAnGangOptions()
-            val canHuNow = !state.justMeldedThisTurn // 吃碰槓當回合嚴格禁止胡牌！
+            val canHuNow = !state.justMeldedThisTurn
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -580,7 +580,6 @@ fun DynamicActionBar(
             }
         }
 
-        // 4. 輪到他家摸打
         else -> {
             val currentSeat = state.currentTurnPlayer
             val canOtherHuNow = !state.justMeldedThisTurn
@@ -668,7 +667,7 @@ fun PlayerRiverAndMeldRow(seatName: String, discards: List<MahjongTile>, melds: 
 }
 
 /**
- * 自己鳴牌對話框 (吃、碰、明槓)
+ * 自己鳴牌對話框
  */
 @Composable
 fun SelfMeldDialog(
@@ -708,7 +707,6 @@ fun SelfMeldDialog(
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    // 1. 碰
                     val canPeng = state.canPeng(targetTile)
                     Button(
                         onClick = {
@@ -728,7 +726,6 @@ fun SelfMeldDialog(
                         Text(if (canPeng) "碰牌 (${targetTile.name})" else "無法碰 (手牌不足兩張)", color = Color.Black)
                     }
 
-                    // 2. 吃牌 (嚴格限定：只有上家打出才可吃)
                     val isFromShangJia = lastDiscard.first == PlayerSeat.SHANG_JIA
                     if (isFromShangJia) {
                         val chiCombinations = state.getChiCombinations(targetTile)
@@ -759,7 +756,6 @@ fun SelfMeldDialog(
                         Text("⚠️ 僅有上家出牌才可吃牌 (${lastDiscard.first.title}出牌不可吃)", color = Color.LightGray, fontSize = 11.sp, modifier = Modifier.padding(vertical = 4.dp))
                     }
 
-                    // 3. 明槓
                     val canGang = state.canMingGang(targetTile)
                     if (canGang) {
                         Button(
@@ -821,7 +817,7 @@ fun AnGangDialog(
 }
 
 /**
- * 他家鳴牌對話框 (支援具體選擇吃牌順子組合，絕不誤當碰牌！)
+ * 他家鳴牌對話框
  */
 @Composable
 fun OtherPlayerMeldDialog(
@@ -840,7 +836,6 @@ fun OtherPlayerMeldDialog(
     var selectedSeat by remember { mutableStateOf<PlayerSeat?>(null) }
     var selectedType by remember { mutableStateOf(ActionType.PENG) }
 
-    // 計算目標牌所有合法的吃牌順子組合
     val chiSequences = remember(targetTile) {
         GameState.getAllPossibleChiSequences(targetTile)
     }
@@ -881,7 +876,6 @@ fun OtherPlayerMeldDialog(
 
                 Text("鳴牌類型：", color = TextLight, fontSize = 12.sp)
                 Spacer(modifier = Modifier.height(4.dp))
-                // 吃牌僅目標打牌者的下家（相對於該玩家是上家出牌）才可吃
                 val isShangJiaOfTarget = selectedSeat != null && lastDiscard.first.next() == selectedSeat
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     if (isShangJiaOfTarget && chiSequences.isNotEmpty()) {
@@ -903,7 +897,6 @@ fun OtherPlayerMeldDialog(
                     )
                 }
 
-                // 若選擇「吃牌」，呈現所有可選的順子搭子
                 if (selectedType == ActionType.CHI && chiSequences.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(10.dp))
                     Text("👉 選擇具體吃牌順子搭子：", color = AccentGold, fontSize = 12.sp, fontWeight = FontWeight.Bold)
@@ -973,7 +966,7 @@ fun OtherPlayerMeldDialog(
 }
 
 /**
- * 宣告胡牌對話框 (自摸 vs 放槍直覺二分)
+ * 宣告胡牌對話框
  */
 @Composable
 fun HuDialog(
@@ -986,7 +979,6 @@ fun HuDialog(
     var winner by remember { mutableStateOf(if (isZiMo) state.currentTurnPlayer else PlayerSeat.SELF) }
     var loser by remember { mutableStateOf(state.lastDiscard?.first ?: PlayerSeat.SHANG_JIA) }
 
-    // 檢查選取的胡牌者是否剛吃碰槓副露過 (當回合禁止胡牌)
     val isWinnerMeldedThisTurn = winner == state.currentTurnPlayer && state.justMeldedThisTurn
 
     Dialog(onDismissRequest = onDismiss) {
@@ -995,7 +987,6 @@ fun HuDialog(
                 Text("🏆 宣告胡牌結束本局", color = AccentGold, fontSize = 17.sp, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(10.dp))
 
-                // 頂部二分按鈕：自摸 vs 抓放槍 (超級直覺)
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(
                         onClick = { isZiMo = true },
@@ -1024,7 +1015,6 @@ fun HuDialog(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // 選擇誰胡牌
                 Text("誰胡牌：", color = TextLight, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(4.dp))
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -1045,7 +1035,6 @@ fun HuDialog(
                     }
                 }
 
-                // 如果是抓放槍，選擇誰放槍
                 if (!isZiMo) {
                     Spacer(modifier = Modifier.height(10.dp))
                     Text("誰放槍 (打出胡牌之牌)：", color = TextLight, fontSize = 13.sp, fontWeight = FontWeight.Bold)
@@ -1062,7 +1051,6 @@ fun HuDialog(
                     }
                 }
 
-                // 違規防呆警示
                 if (isWinnerMeldedThisTurn) {
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(

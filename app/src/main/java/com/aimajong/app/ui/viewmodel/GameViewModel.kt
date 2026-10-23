@@ -1,15 +1,21 @@
 package com.aimajong.app.ui.viewmodel
 
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.aimajong.app.data.SettingsRepository
 import com.aimajong.app.model.*
+import com.aimajong.app.network.VllmApiClient
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-class GameViewModel : ViewModel() {
+class GameViewModel(application: Application) : AndroidViewModel(application) {
+
+    val settingsRepo = SettingsRepository(application)
+    val vllmApiClient = VllmApiClient()
 
     private val _gameState = MutableStateFlow(GameState())
     val gameState: StateFlow<GameState> = _gameState.asStateFlow()
@@ -67,7 +73,7 @@ class GameViewModel : ViewModel() {
     }
 
     /**
-     * 自己摸牌 (手牌加 1 張；摸到花牌則自動補花，不進手牌)
+     * 自己摸牌
      */
     fun onDrawTile(tile: MahjongTile) {
         val current = _gameState.value
@@ -103,7 +109,7 @@ class GameViewModel : ViewModel() {
                 s.copy(
                     handTiles = newHand,
                     phase = TurnPhase.AWAITING_DISCARD,
-                    justMeldedThisTurn = false, // 正常摸牌，可胡可打
+                    justMeldedThisTurn = false,
                     history = s.history + record
                 )
             }
@@ -112,7 +118,7 @@ class GameViewModel : ViewModel() {
     }
 
     /**
-     * 玩家打牌 (打牌後重設副露標記)
+     * 玩家打牌
      */
     fun onDiscardTile(seat: PlayerSeat, tile: MahjongTile) {
         val current = _gameState.value
@@ -148,7 +154,7 @@ class GameViewModel : ViewModel() {
                 discards = newDiscards,
                 lastDiscard = Pair(seat, tile),
                 phase = TurnPhase.AWAITING_CALL_RESPONSE,
-                justMeldedThisTurn = false, // 打出牌後重設
+                justMeldedThisTurn = false,
                 history = s.history + record
             )
         }
@@ -180,7 +186,7 @@ class GameViewModel : ViewModel() {
     }
 
     /**
-     * 執行吃/碰/明槓（標記【當回合剛鳴牌，該玩家此時嚴格禁止宣告胡牌】）
+     * 執行吃/碰/明槓
      */
     fun onMeldAction(seat: PlayerSeat, meld: Meld) {
         val current = _gameState.value
@@ -218,7 +224,7 @@ class GameViewModel : ViewModel() {
                     melds = s.melds + meld,
                     currentTurnPlayer = PlayerSeat.SELF,
                     phase = nextPhase,
-                    justMeldedThisTurn = true, // 剛吃碰槓，當回合不能胡牌！
+                    justMeldedThisTurn = true,
                     history = s.history + record
                 )
             } else {
@@ -239,7 +245,7 @@ class GameViewModel : ViewModel() {
                     otherMelds = newOtherMelds,
                     currentTurnPlayer = seat,
                     phase = nextPhase,
-                    justMeldedThisTurn = true, // 剛吃碰槓，當回合不能胡牌！
+                    justMeldedThisTurn = true,
                     history = s.history + record
                 )
             }
@@ -328,13 +334,12 @@ class GameViewModel : ViewModel() {
     }
 
     /**
-     * 宣告胡牌 (規則防呆：吃碰槓的那一家當回合不能胡牌)
+     * 宣告胡牌
      */
     fun onDeclareHu(winnerSeat: PlayerSeat, loserSeat: PlayerSeat?): Boolean {
         val current = _gameState.value
         if (current.isGameOver) return false
 
-        // 規則校驗：如果胡牌者是當前回合玩家，且剛吃碰槓副露過，嚴格禁止胡牌！
         if (winnerSeat == current.currentTurnPlayer && current.justMeldedThisTurn) {
             return false
         }
@@ -372,7 +377,7 @@ class GameViewModel : ViewModel() {
     }
 
     /**
-     * 觸發 AI 決策分析
+     * 觸發 AI 決策分析（真串接 vLLM d3-flash API，失敗時自動容錯回退本地引擎）
      */
     fun triggerAIDecision() {
         viewModelScope.launch {
@@ -381,7 +386,6 @@ class GameViewModel : ViewModel() {
             if (state.handTiles.isEmpty()) return@launch
 
             _isLoadingDecision.value = true
-            kotlinx.coroutines.delay(180)
 
             val lastDiscard = state.lastDiscard
 
@@ -400,39 +404,68 @@ class GameViewModel : ViewModel() {
                     return@launch
                 }
 
-                val choices = mutableListOf<DecisionChoiceProbability>()
+                val candidateChoices = mutableListOf<String>()
 
                 if (!discardedTile.isFlower) {
                     if (state.canPeng(discardedTile)) {
-                        choices.add(DecisionChoiceProbability("碰 ${discardedTile.name}", 0.76f))
+                        candidateChoices.add("碰 ${discardedTile.name}")
                     }
 
                     if (fromSeat == PlayerSeat.SHANG_JIA) {
                         val chiOptions = state.getChiCombinations(discardedTile)
                         chiOptions.forEach { (t1, t2) ->
-                            choices.add(DecisionChoiceProbability("吃 [${t1.name}, ${t2.name}]", 0.65f))
+                            candidateChoices.add("吃 [${t1.name}, ${t2.name}]")
                         }
                     }
 
                     if (state.canMingGang(discardedTile)) {
-                        choices.add(DecisionChoiceProbability("明槓 ${discardedTile.name}", 0.88f))
+                        candidateChoices.add("明槓 ${discardedTile.name}")
                     }
                 }
 
-                // 抓放槍榮和
-                choices.add(DecisionChoiceProbability("抓放槍 (榮和)", 0.95f))
-                choices.add(DecisionChoiceProbability("過 (不鳴牌)", 0.22f))
+                candidateChoices.add("抓放槍 (榮和)")
+                candidateChoices.add("過 (不鳴牌)")
 
-                val best = choices.maxByOrNull { it.probability }
-                _aiDecision.value = AIDecisionResult(
-                    recommendedAction = "針對 ${fromSeat.title} 的 ${discardedTile.name}：建議 ${best?.actionText}",
-                    optionsProbability = choices.sortedByDescending { it.probability },
-                    explanationNote = if (fromSeat == PlayerSeat.SHANG_JIA) {
-                        "上家出牌：可吃、可碰、可槓、可抓放槍"
-                    } else {
-                        "${fromSeat.title}出牌：非上家不可吃，僅可碰/槓/抓放槍"
-                    }
+                // 嘗試呼叫真實 vLLM d3-flash API
+                val apiResult = vllmApiClient.requestDecision(
+                    baseUrl = settingsRepo.serverBaseUrl,
+                    apiKey = settingsRepo.apiKey,
+                    modelName = settingsRepo.modelName,
+                    state = state,
+                    candidateChoices = candidateChoices
                 )
+
+                if (apiResult.isSuccess) {
+                    val res = apiResult.getOrNull()!!
+                    _aiDecision.value = res.copy(
+                        explanationNote = "vLLM d3-flash 真實推論 (端點: ${settingsRepo.serverBaseUrl})"
+                    )
+                } else if (settingsRepo.useMockFallback) {
+                    // 本地智能備援
+                    val mockChoices = candidateChoices.mapIndexed { idx, opt ->
+                        val prob = when {
+                            opt.startsWith("抓放槍") -> 0.95f
+                            opt.startsWith("碰") -> 0.76f
+                            opt.startsWith("吃") -> 0.65f
+                            opt.startsWith("明槓") -> 0.88f
+                            else -> 0.22f
+                        }
+                        DecisionChoiceProbability(opt, prob)
+                    }.sortedByDescending { it.probability }
+
+                    _aiDecision.value = AIDecisionResult(
+                        recommendedAction = "建議 ${mockChoices.first().actionText}",
+                        optionsProbability = mockChoices,
+                        explanationNote = "（本地引擎備援，vLLM 未連線）"
+                    )
+                } else {
+                    _aiDecision.value = AIDecisionResult(
+                        recommendedAction = "vLLM 連線失敗",
+                        optionsProbability = emptyList(),
+                        explanationNote = apiResult.exceptionOrNull()?.message ?: "連線錯誤"
+                    )
+                }
+
                 _isLoadingDecision.value = false
                 return@launch
             }
@@ -441,37 +474,60 @@ class GameViewModel : ViewModel() {
             if (state.currentTurnPlayer == PlayerSeat.SELF && state.phase == TurnPhase.AWAITING_DISCARD) {
                 val hand = state.handTiles
                 val anGangOptions = state.getAnGangOptions()
-                val choices = mutableListOf<DecisionChoiceProbability>()
+                val candidateChoices = mutableListOf<String>()
 
                 if (anGangOptions.isNotEmpty()) {
                     anGangOptions.forEach { tile ->
-                        choices.add(DecisionChoiceProbability("暗槓 ${tile.name}", 0.93f))
+                        candidateChoices.add("暗槓 ${tile.name}")
                     }
                 }
 
                 val candidates = hand.filter { !it.isFlower }.distinctBy { it.id }.takeLast(4)
-                candidates.forEachIndexed { index, tile ->
-                    val prob = when (index) {
-                        0 -> 0.66f
-                        1 -> 0.21f
-                        2 -> 0.09f
-                        else -> 0.04f
-                    }
-                    choices.add(DecisionChoiceProbability("打出 ${tile.name}", prob))
+                candidates.forEach { tile ->
+                    candidateChoices.add("打出 ${tile.name}")
                 }
 
-                val sortedChoices = choices.sortedByDescending { it.probability }
-                val best = sortedChoices.firstOrNull()
-
-                _aiDecision.value = AIDecisionResult(
-                    recommendedAction = best?.actionText ?: "請選擇一張牌打出",
-                    optionsProbability = sortedChoices,
-                    explanationNote = when {
-                        state.justMeldedThisTurn -> "剛剛完成吃/碰/槓副露，當回合必須打出一張牌，嚴格禁止胡牌！"
-                        anGangOptions.isNotEmpty() -> "💡 偵測到可暗槓牌型！可選擇暗槓並槓尾補牌"
-                        else -> "輪到你的出牌回合，點擊手牌即可打出"
-                    }
+                val apiResult = vllmApiClient.requestDecision(
+                    baseUrl = settingsRepo.serverBaseUrl,
+                    apiKey = settingsRepo.apiKey,
+                    modelName = settingsRepo.modelName,
+                    state = state,
+                    candidateChoices = candidateChoices
                 )
+
+                if (apiResult.isSuccess) {
+                    val res = apiResult.getOrNull()!!
+                    _aiDecision.value = res.copy(
+                        explanationNote = "vLLM d3-flash 真實推論 (端點: ${settingsRepo.serverBaseUrl})"
+                    )
+                } else if (settingsRepo.useMockFallback) {
+                    val mockChoices = candidateChoices.mapIndexed { index, opt ->
+                        val prob = if (opt.startsWith("暗槓")) 0.93f
+                        else when (index) {
+                            0 -> 0.66f
+                            1 -> 0.21f
+                            2 -> 0.09f
+                            else -> 0.04f
+                        }
+                        DecisionChoiceProbability(opt, prob)
+                    }.sortedByDescending { it.probability }
+
+                    _aiDecision.value = AIDecisionResult(
+                        recommendedAction = mockChoices.first().actionText,
+                        optionsProbability = mockChoices,
+                        explanationNote = if (anGangOptions.isNotEmpty()) {
+                            "💡 偵測到可暗槓牌型！可選擇暗槓並槓尾補牌"
+                        } else {
+                            "（本地引擎備援，vLLM 未連線）"
+                        }
+                    )
+                } else {
+                    _aiDecision.value = AIDecisionResult(
+                        recommendedAction = "vLLM 連線失敗",
+                        optionsProbability = emptyList(),
+                        explanationNote = apiResult.exceptionOrNull()?.message ?: "連線錯誤"
+                    )
+                }
             } else if (state.currentTurnPlayer == PlayerSeat.SELF && state.phase == TurnPhase.AWAITING_DRAW) {
                 _aiDecision.value = AIDecisionResult(
                     recommendedAction = "輪到你摸牌",
