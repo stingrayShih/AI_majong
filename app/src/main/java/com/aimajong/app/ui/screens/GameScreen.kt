@@ -46,6 +46,7 @@ fun GameScreen(
     var showSelfMeldDialog by remember { mutableStateOf(false) }
     var showAnGangDialog by remember { mutableStateOf(false) }
     var showHuDialog by remember { mutableStateOf(false) }
+    var huInitialIsZiMo by remember { mutableStateOf(false) }
     var showChangeDealerDialog by remember { mutableStateOf(false) }
 
     Scaffold(
@@ -82,7 +83,6 @@ fun GameScreen(
                     }
                 },
                 actions = {
-                    // ↩ 復原上一步 (Undo)
                     IconButton(
                         onClick = {
                             val success = viewModel.undoLastAction()
@@ -112,7 +112,6 @@ fun GameScreen(
                 .padding(horizontal = 12.dp, vertical = 6.dp),
             verticalArrangement = Arrangement.SpaceBetween
         ) {
-            // 頂部順位狀態條
             TurnStatusBanner(state = state)
 
             // 1. 各家牌桌與吃碰槓明牌展示區
@@ -240,7 +239,10 @@ fun GameScreen(
                     Text(
                         when {
                             state.isGameOver -> "牌局已結束"
-                            state.canSelfDiscard -> "🟢 輪到你出牌 (點牌打出)"
+                            state.canSelfDiscard -> {
+                                if (state.justMeldedThisTurn) "🟢 剛吃碰槓副露，請打出一張牌 (當回合不可胡牌)"
+                                else "🟢 輪到你出牌 (點牌打出)"
+                            }
                             state.canSelfDraw -> "🟡 輪到你摸牌"
                             state.isInCallResponsePhase -> {
                                 if (state.lastDiscard?.first == PlayerSeat.SELF) "你已出牌，等待他家反應" else "⚡ 他家出牌：可點擊鳴牌或按【過】"
@@ -284,7 +286,7 @@ fun GameScreen(
                 }
             }
 
-            // 4. 底部動作控制面板
+            // 4. 底部動作控制面板 (自摸與抓放槍明確區分為兩個直覺按鈕)
             DynamicActionBar(
                 state = state,
                 onDrawClicked = { showTilePickerForDraw = true },
@@ -293,30 +295,37 @@ fun GameScreen(
                 onOtherTurnClicked = { showTilePickerForOtherTurn = true },
                 onOtherMeldClicked = { showOtherMeldDialog = true },
                 onPassCallClicked = { viewModel.onPassCall() },
-                onHuClicked = { showHuDialog = true }
+                onZiMoClicked = {
+                    huInitialIsZiMo = true
+                    showHuDialog = true
+                },
+                onFangQiangClicked = {
+                    huInitialIsZiMo = false
+                    showHuDialog = true
+                }
             )
         }
     }
 
-    // 摸牌選擇器 (預設優先開啟【字牌】，支援花牌摸入後自動補花)
+    // 摸牌選擇器
     if (showTilePickerForDraw) {
         TilePickerDialog(
             title = "選擇摸到的牌 (若為花牌將自動補花)",
             initialSuit = TileSuit.HONOR,
-            allowFlower = true, // 只有摸牌可能摸到花牌
+            allowFlower = true,
             getRemainingCount = { tile -> state.remainingCount(tile) },
             onDismissRequest = { showTilePickerForDraw = false },
             onTileSelected = { tile -> viewModel.onDrawTile(tile) }
         )
     }
 
-    // 記錄當前輪到的他家出牌 (預設優先開啟【字牌】，花牌禁止打出)
+    // 記錄當前輪到的他家出牌
     if (showTilePickerForOtherTurn) {
         val currentSeat = state.currentTurnPlayer
         TilePickerDialog(
             title = "選擇 ${currentSeat.title} 打出的牌",
             initialSuit = TileSuit.HONOR,
-            allowFlower = false, // 花牌不能打出！
+            allowFlower = false,
             getRemainingCount = { tile -> state.remainingCount(tile) },
             onDismissRequest = { showTilePickerForOtherTurn = false },
             onTileSelected = { tile -> viewModel.onOtherTurnAction(currentSeat, tile) }
@@ -344,7 +353,7 @@ fun GameScreen(
         )
     }
 
-    // 他家鳴牌 (徹底修正：預設不選哪家，強制手動點選，絕不記錄到自己！)
+    // 他家吃碰槓 (全面支援具體吃牌順子組合選擇，非碰牌！)
     if (showOtherMeldDialog) {
         OtherPlayerMeldDialog(
             state = state,
@@ -356,14 +365,19 @@ fun GameScreen(
         )
     }
 
-    // 胡牌記錄
+    // 宣告胡牌 (自摸 vs 放槍直覺二分)
     if (showHuDialog) {
         HuDialog(
             state = state,
+            initialIsZiMo = huInitialIsZiMo,
             onDismiss = { showHuDialog = false },
             onHuConfirmed = { winner, loser ->
-                viewModel.onDeclareHu(winner, loser)
-                showHuDialog = false
+                val ok = viewModel.onDeclareHu(winner, loser)
+                if (ok) {
+                    showHuDialog = false
+                } else {
+                    Toast.makeText(context, "⚠️ 吃碰槓的那一家當回合不能胡牌，必須先打出一張牌！", Toast.LENGTH_LONG).show()
+                }
             }
         )
     }
@@ -423,7 +437,7 @@ fun TurnStatusBanner(state: GameState) {
 }
 
 /**
- * 依據遊戲階段動態呈現的動作控制列
+ * 依據遊戲階段動態呈現的動作控制列 (自摸與放槍直覺拆為專屬按鈕)
  */
 @Composable
 fun DynamicActionBar(
@@ -434,7 +448,8 @@ fun DynamicActionBar(
     onOtherTurnClicked: () -> Unit,
     onOtherMeldClicked: () -> Unit,
     onPassCallClicked: () -> Unit,
-    onHuClicked: () -> Unit
+    onZiMoClicked: () -> Unit,
+    onFangQiangClicked: () -> Unit
 ) {
     if (state.isGameOver) {
         Card(
@@ -449,7 +464,7 @@ fun DynamicActionBar(
     }
 
     when {
-        // 1. 鳴牌判定階段 (AWAITING_CALL_RESPONSE)
+        // 1. 他家出牌後的【鳴牌判定階段】(AWAITING_CALL_RESPONSE)
         state.isInCallResponsePhase -> {
             val isMyDiscard = state.lastDiscard?.first == PlayerSeat.SELF
 
@@ -469,7 +484,7 @@ fun DynamicActionBar(
                         }
                     }
 
-                    // 他家吃碰槓 (強制手動選哪一家，絕不計入自己)
+                    // 他家吃碰槓
                     Button(
                         onClick = onOtherMeldClicked,
                         modifier = Modifier.weight(1.2f),
@@ -478,13 +493,13 @@ fun DynamicActionBar(
                         Text("他家吃碰槓", color = TextLight, fontSize = 13.sp)
                     }
 
-                    // 胡牌
+                    // 抓放槍 (胡牌) - 專屬直覺按鈕
                     Button(
-                        onClick = onHuClicked,
-                        modifier = Modifier.weight(0.9f),
+                        onClick = onFangQiangClicked,
+                        modifier = Modifier.weight(1.1f),
                         colors = ButtonDefaults.buttonColors(containerColor = TileWanRed)
                     ) {
-                        Text(if (isMyDiscard) "他家胡我" else "胡牌", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        Text("抓放槍胡", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                     }
                 }
 
@@ -523,12 +538,13 @@ fun DynamicActionBar(
                 ) {
                     Text("摸牌", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 }
+                // 自摸按鈕
                 Button(
-                    onClick = onHuClicked,
-                    modifier = Modifier.weight(1f).height(48.dp),
+                    onClick = onZiMoClicked,
+                    modifier = Modifier.weight(1.2f).height(48.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = TileWanRed)
                 ) {
-                    Text("自摸胡牌", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    Text("自摸胡牌", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                 }
             }
         }
@@ -536,6 +552,8 @@ fun DynamicActionBar(
         // 3. 輪到自己出牌 (AWAITING_DISCARD)
         state.canSelfDiscard -> {
             val anGangList = state.getAnGangOptions()
+            val canHuNow = !state.justMeldedThisTurn // 吃碰槓當回合嚴格禁止胡牌！
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -549,12 +567,15 @@ fun DynamicActionBar(
                         Text("暗槓 (${anGangList.first().name})", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                     }
                 }
-                Button(
-                    onClick = onHuClicked,
-                    modifier = Modifier.weight(1f).height(46.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = TileWanRed)
-                ) {
-                    Text("宣告自摸", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+
+                if (canHuNow) {
+                    Button(
+                        onClick = onZiMoClicked,
+                        modifier = Modifier.weight(1f).height(46.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = TileWanRed)
+                    ) {
+                        Text("自摸胡牌", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    }
                 }
             }
         }
@@ -562,6 +583,8 @@ fun DynamicActionBar(
         // 4. 輪到他家摸打
         else -> {
             val currentSeat = state.currentTurnPlayer
+            val canOtherHuNow = !state.justMeldedThisTurn
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -573,12 +596,14 @@ fun DynamicActionBar(
                 ) {
                     Text("記錄【${currentSeat.title}】摸打出牌", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                 }
-                Button(
-                    onClick = onHuClicked,
-                    modifier = Modifier.weight(1f).height(48.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = TileWanRed)
-                ) {
-                    Text("${currentSeat.title}自摸", color = Color.White, fontSize = 12.sp)
+                if (canOtherHuNow) {
+                    Button(
+                        onClick = onZiMoClicked,
+                        modifier = Modifier.weight(1.2f).height(48.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = TileWanRed)
+                    ) {
+                        Text("${currentSeat.title}自摸", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
         }
@@ -643,7 +668,7 @@ fun PlayerRiverAndMeldRow(seatName: String, discards: List<MahjongTile>, melds: 
 }
 
 /**
- * 自己鳴牌對話框 (吃、碰、明槓) - 花牌禁止吃碰槓，自己打出的牌禁止吃碰槓
+ * 自己鳴牌對話框 (吃、碰、明槓)
  */
 @Composable
 fun SelfMeldDialog(
@@ -796,7 +821,7 @@ fun AnGangDialog(
 }
 
 /**
- * 他家鳴牌對話框 (徹底防呆：預設不選任何一家，強制使用者明確點選上家/對家/下家，絕不記錄到自己！)
+ * 他家鳴牌對話框 (支援具體選擇吃牌順子組合，絕不誤當碰牌！)
  */
 @Composable
 fun OtherPlayerMeldDialog(
@@ -807,15 +832,21 @@ fun OtherPlayerMeldDialog(
     val lastDiscard = state.lastDiscard ?: return
     val targetTile = lastDiscard.second
 
-    // 只有其他三家（排除自己、排除打出該張牌的玩家）
     val eligibleOtherSeats = remember(lastDiscard) {
         listOf(PlayerSeat.SHANG_JIA, PlayerSeat.DUI_JIA, PlayerSeat.XIA_JIA)
             .filter { it != lastDiscard.first }
     }
 
-    // 預設不選取任何一家，強制使用者點選！
     var selectedSeat by remember { mutableStateOf<PlayerSeat?>(null) }
     var selectedType by remember { mutableStateOf(ActionType.PENG) }
+
+    // 計算目標牌所有合法的吃牌順子組合
+    val chiSequences = remember(targetTile) {
+        GameState.getAllPossibleChiSequences(targetTile)
+    }
+    var selectedChiSequence by remember(chiSequences) {
+        mutableStateOf(chiSequences.firstOrNull() ?: emptyList())
+    }
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(shape = RoundedCornerShape(16.dp), color = CardBackground, modifier = Modifier.fillMaxWidth()) {
@@ -850,10 +881,10 @@ fun OtherPlayerMeldDialog(
 
                 Text("鳴牌類型：", color = TextLight, fontSize = 12.sp)
                 Spacer(modifier = Modifier.height(4.dp))
+                // 吃牌僅目標打牌者的下家（相對於該玩家是上家出牌）才可吃
                 val isShangJiaOfTarget = selectedSeat != null && lastDiscard.first.next() == selectedSeat
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    // 吃牌僅目標打牌者的下家（相對於該玩家是上家打牌）可吃
-                    if (isShangJiaOfTarget) {
+                    if (isShangJiaOfTarget && chiSequences.isNotEmpty()) {
                         FilterChip(
                             selected = selectedType == ActionType.CHI,
                             onClick = { selectedType = ActionType.CHI },
@@ -872,14 +903,47 @@ fun OtherPlayerMeldDialog(
                     )
                 }
 
+                // 若選擇「吃牌」，呈現所有可選的順子搭子
+                if (selectedType == ActionType.CHI && chiSequences.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text("👉 選擇具體吃牌順子搭子：", color = AccentGold, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        chiSequences.forEach { seq ->
+                            val isSelectedSeq = selectedChiSequence == seq
+                            Button(
+                                onClick = { selectedChiSequence = seq },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = if (isSelectedSeq) AccentGold else MahjongGreenDark,
+                                    contentColor = if (isSelectedSeq) Color.Black else TextLight
+                                ),
+                                shape = RoundedCornerShape(6.dp),
+                                modifier = Modifier.fillMaxWidth().height(36.dp),
+                                contentPadding = PaddingValues(horizontal = 8.dp)
+                            ) {
+                                Text(
+                                    text = "吃 [${seq.joinToString(", ") { it.name }}]",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.sp
+                                )
+                            }
+                        }
+                    }
+                }
+
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // 當未選擇哪一家時，按鈕反灰停用
-                val canConfirm = selectedSeat != null && selectedSeat != PlayerSeat.SELF
+                val canConfirm = selectedSeat != null && selectedSeat != PlayerSeat.SELF &&
+                        (selectedType != ActionType.CHI || selectedChiSequence.isNotEmpty())
+
                 Button(
                     onClick = {
                         val currentTarget = selectedSeat ?: return@Button
                         val tiles = when (selectedType) {
+                            ActionType.CHI -> selectedChiSequence
                             ActionType.PENG -> listOf(targetTile, targetTile, targetTile)
                             ActionType.GANG_MING -> listOf(targetTile, targetTile, targetTile, targetTile)
                             else -> listOf(targetTile, targetTile, targetTile)
@@ -895,7 +959,7 @@ fun OtherPlayerMeldDialog(
                     modifier = Modifier.fillMaxWidth().height(44.dp)
                 ) {
                     Text(
-                        text = if (canConfirm) "確認【${selectedSeat!!.title}】鳴牌並跳轉順位" else "⚠️ 請先點擊上方選擇哪一家",
+                        text = if (selectedSeat == null) "⚠️ 請先點擊上方選擇哪一家" else "確認【${selectedSeat!!.title}】鳴牌並跳轉順位",
                         color = if (canConfirm) Color.Black else Color.LightGray,
                         fontWeight = FontWeight.Bold,
                         fontSize = 13.sp
@@ -909,17 +973,21 @@ fun OtherPlayerMeldDialog(
 }
 
 /**
- * 宣告胡牌對話框
+ * 宣告胡牌對話框 (自摸 vs 放槍直覺二分)
  */
 @Composable
 fun HuDialog(
     state: GameState,
+    initialIsZiMo: Boolean = false,
     onDismiss: () -> Unit,
     onHuConfirmed: (winner: PlayerSeat, loser: PlayerSeat?) -> Unit
 ) {
-    var winner by remember { mutableStateOf(PlayerSeat.SELF) }
-    var isZiMo by remember { mutableStateOf(state.lastDiscard == null) }
+    var isZiMo by remember { mutableStateOf(initialIsZiMo) }
+    var winner by remember { mutableStateOf(if (isZiMo) state.currentTurnPlayer else PlayerSeat.SELF) }
     var loser by remember { mutableStateOf(state.lastDiscard?.first ?: PlayerSeat.SHANG_JIA) }
+
+    // 檢查選取的胡牌者是否剛吃碰槓副露過 (當回合禁止胡牌)
+    val isWinnerMeldedThisTurn = winner == state.currentTurnPlayer && state.justMeldedThisTurn
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(shape = RoundedCornerShape(16.dp), color = CardBackground, modifier = Modifier.fillMaxWidth()) {
@@ -927,32 +995,61 @@ fun HuDialog(
                 Text("🏆 宣告胡牌結束本局", color = AccentGold, fontSize = 17.sp, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(10.dp))
 
-                Text("誰胡牌：", color = TextLight, fontSize = 13.sp)
+                // 頂部二分按鈕：自摸 vs 抓放槍 (超級直覺)
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(
+                        onClick = { isZiMo = true },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (isZiMo) Color(0xFF2E7D32) else CardBackground,
+                            contentColor = if (isZiMo) Color.White else TextMuted
+                        ),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.weight(1f).border(1.dp, if (isZiMo) AccentGold else Color.Gray, RoundedCornerShape(8.dp))
+                    ) {
+                        Text("🟢 自摸胡牌", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    }
+
+                    Button(
+                        onClick = { isZiMo = false },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (!isZiMo) TileWanRed else CardBackground,
+                            contentColor = if (!isZiMo) Color.White else TextMuted
+                        ),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.weight(1f).border(1.dp, if (!isZiMo) AccentGold else Color.Gray, RoundedCornerShape(8.dp))
+                    ) {
+                        Text("🔴 抓放槍 (榮和)", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // 選擇誰胡牌
+                Text("誰胡牌：", color = TextLight, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(4.dp))
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     PlayerSeat.values().forEach { seat ->
+                        val isMelded = seat == state.currentTurnPlayer && state.justMeldedThisTurn
                         FilterChip(
                             selected = winner == seat,
                             onClick = { winner = seat },
-                            label = { Text(if (seat == PlayerSeat.SELF) "我" else seat.title.replace("家", ""), fontSize = 12.sp) },
+                            label = {
+                                Text(
+                                    text = if (seat == PlayerSeat.SELF) "我" else seat.title.replace("家", ""),
+                                    fontSize = 12.sp,
+                                    color = if (isMelded) Color.Red else Color.Unspecified
+                                )
+                            },
                             modifier = Modifier.weight(1f)
                         )
                     }
                 }
 
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(if (isZiMo) "方式：自摸" else "方式：抓放槍 (榮和)", color = TextLight, fontSize = 13.sp)
-                    Switch(checked = isZiMo, onCheckedChange = { isZiMo = it })
-                }
-
+                // 如果是抓放槍，選擇誰放槍
                 if (!isZiMo) {
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text("誰放槍：", color = TextLight, fontSize = 12.sp)
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text("誰放槍 (打出胡牌之牌)：", color = TextLight, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(4.dp))
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         PlayerSeat.values().filter { it != winner }.forEach { seat ->
                             FilterChip(
@@ -965,14 +1062,36 @@ fun HuDialog(
                     }
                 }
 
+                // 違規防呆警示
+                if (isWinnerMeldedThisTurn) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        "⚠️ 規則禁止：【${winner.title}】剛完成吃碰槓副露，當回合嚴格禁止胡牌，必須先打出一張牌！",
+                        color = Color.Red,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
                 Spacer(modifier = Modifier.height(14.dp))
 
                 Button(
                     onClick = { onHuConfirmed(winner, if (isZiMo) null else loser) },
-                    colors = ButtonDefaults.buttonColors(containerColor = TileWanRed),
+                    enabled = !isWinnerMeldedThisTurn,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (isZiMo) Color(0xFF2E7D32) else TileWanRed,
+                        disabledContainerColor = Color.DarkGray
+                    ),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("確認胡牌並鎖定本局", color = Color.White, fontWeight = FontWeight.Bold)
+                    Text(
+                        text = if (isWinnerMeldedThisTurn) "禁止胡牌 (副露需先出牌)"
+                        else if (isZiMo) "確認【${winner.title}】自摸胡牌 🏆"
+                        else "確認【${winner.title}】胡牌 (【${loser.title}】放槍) 🏆",
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp
+                    )
                 }
 
                 TextButton(onClick = onDismiss) { Text("取消", color = TextMuted) }

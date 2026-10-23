@@ -43,7 +43,6 @@ class GameViewModel : ViewModel() {
      */
     fun startNewGame(initialHand: List<MahjongTile> = emptyList(), dealerSeat: PlayerSeat = PlayerSeat.SELF) {
         historySnapshots.clear()
-        // 確保手牌不含花牌
         val cleanHand = initialHand.filter { !it.isFlower }
         val initialFlowers = initialHand.filter { it.isFlower }
 
@@ -52,8 +51,9 @@ class GameViewModel : ViewModel() {
             handTiles = cleanHand.sorted(),
             flowers = initialFlowers,
             currentTurn = 1,
-            currentTurnPlayer = dealerSeat, // 莊家首攻
-            phase = TurnPhase.AWAITING_DISCARD
+            currentTurnPlayer = dealerSeat,
+            phase = TurnPhase.AWAITING_DISCARD,
+            justMeldedThisTurn = false
         )
         triggerAIDecision()
     }
@@ -67,7 +67,7 @@ class GameViewModel : ViewModel() {
     }
 
     /**
-     * 自己摸牌 (手牌加 1 張；若摸到花牌則自動補花，不進手牌，繼續等待補摸牌)
+     * 自己摸牌 (手牌加 1 張；摸到花牌則自動補花，不進手牌)
      */
     fun onDrawTile(tile: MahjongTile) {
         val current = _gameState.value
@@ -78,7 +78,6 @@ class GameViewModel : ViewModel() {
         saveSnapshot()
 
         if (tile.isFlower) {
-            // 摸到花牌：自動歸入花牌區，保持 AWAITING_DRAW 階段等待槓尾補摸
             _gameState.update { s ->
                 val record = GameActionRecord(
                     turnNumber = s.currentTurn,
@@ -104,6 +103,7 @@ class GameViewModel : ViewModel() {
                 s.copy(
                     handTiles = newHand,
                     phase = TurnPhase.AWAITING_DISCARD,
+                    justMeldedThisTurn = false, // 正常摸牌，可胡可打
                     history = s.history + record
                 )
             }
@@ -112,12 +112,12 @@ class GameViewModel : ViewModel() {
     }
 
     /**
-     * 玩家打牌 (嚴格防呆：花牌不能打出！)
+     * 玩家打牌 (打牌後重設副露標記)
      */
     fun onDiscardTile(seat: PlayerSeat, tile: MahjongTile) {
         val current = _gameState.value
         if (current.isGameOver) return
-        if (tile.isFlower) return // 花牌絕對不能打！
+        if (tile.isFlower) return
         if (current.currentTurnPlayer != seat || current.phase != TurnPhase.AWAITING_DISCARD) return
         if (seat != PlayerSeat.SELF && current.remainingCount(tile) <= 0) return
 
@@ -148,6 +148,7 @@ class GameViewModel : ViewModel() {
                 discards = newDiscards,
                 lastDiscard = Pair(seat, tile),
                 phase = TurnPhase.AWAITING_CALL_RESPONSE,
+                justMeldedThisTurn = false, // 打出牌後重設
                 history = s.history + record
             )
         }
@@ -170,7 +171,8 @@ class GameViewModel : ViewModel() {
             s.copy(
                 currentTurnPlayer = nextPlayer,
                 phase = TurnPhase.AWAITING_DRAW,
-                currentTurn = s.currentTurn + 1
+                currentTurn = s.currentTurn + 1,
+                justMeldedThisTurn = false
             )
         }
 
@@ -178,13 +180,13 @@ class GameViewModel : ViewModel() {
     }
 
     /**
-     * 執行吃/碰/明槓（嚴格防呆：花牌不能吃碰槓；自己打的不能吃碰槓；他家吃碰槓只能是他家）
+     * 執行吃/碰/明槓（標記【當回合剛鳴牌，該玩家此時嚴格禁止宣告胡牌】）
      */
     fun onMeldAction(seat: PlayerSeat, meld: Meld) {
         val current = _gameState.value
         if (current.phase != TurnPhase.AWAITING_CALL_RESPONSE) return
-        if (meld.triggerTile?.isFlower == true) return // 花牌不能鳴牌！
-        if (current.lastDiscard?.first == seat) return // 自己打的不能鳴牌！
+        if (meld.triggerTile?.isFlower == true) return
+        if (current.lastDiscard?.first == seat) return
 
         saveSnapshot()
 
@@ -216,6 +218,7 @@ class GameViewModel : ViewModel() {
                     melds = s.melds + meld,
                     currentTurnPlayer = PlayerSeat.SELF,
                     phase = nextPhase,
+                    justMeldedThisTurn = true, // 剛吃碰槓，當回合不能胡牌！
                     history = s.history + record
                 )
             } else {
@@ -236,6 +239,7 @@ class GameViewModel : ViewModel() {
                     otherMelds = newOtherMelds,
                     currentTurnPlayer = seat,
                     phase = nextPhase,
+                    justMeldedThisTurn = true, // 剛吃碰槓，當回合不能胡牌！
                     history = s.history + record
                 )
             }
@@ -245,7 +249,7 @@ class GameViewModel : ViewModel() {
     }
 
     /**
-     * 自己暗槓 (花牌不能暗槓)
+     * 自己暗槓
      */
     fun onAnGang(tile: MahjongTile) {
         val current = _gameState.value
@@ -281,6 +285,7 @@ class GameViewModel : ViewModel() {
                 handTiles = newHand.sorted(),
                 melds = s.melds + meld,
                 phase = TurnPhase.AWAITING_DRAW,
+                justMeldedThisTurn = true,
                 history = s.history + record
             )
         }
@@ -294,7 +299,7 @@ class GameViewModel : ViewModel() {
     fun onOtherTurnAction(seat: PlayerSeat, discardedTile: MahjongTile) {
         val current = _gameState.value
         if (current.isGameOver) return
-        if (discardedTile.isFlower) return // 花牌不能打出！
+        if (discardedTile.isFlower) return
         if (current.currentTurnPlayer != seat) return
 
         saveSnapshot()
@@ -314,6 +319,7 @@ class GameViewModel : ViewModel() {
                 discards = newDiscards,
                 lastDiscard = Pair(seat, discardedTile),
                 phase = TurnPhase.AWAITING_CALL_RESPONSE,
+                justMeldedThisTurn = false,
                 history = s.history + record
             )
         }
@@ -322,9 +328,17 @@ class GameViewModel : ViewModel() {
     }
 
     /**
-     * 宣告胡牌
+     * 宣告胡牌 (規則防呆：吃碰槓的那一家當回合不能胡牌)
      */
-    fun onDeclareHu(winnerSeat: PlayerSeat, loserSeat: PlayerSeat?) {
+    fun onDeclareHu(winnerSeat: PlayerSeat, loserSeat: PlayerSeat?): Boolean {
+        val current = _gameState.value
+        if (current.isGameOver) return false
+
+        // 規則校驗：如果胡牌者是當前回合玩家，且剛吃碰槓副露過，嚴格禁止胡牌！
+        if (winnerSeat == current.currentTurnPlayer && current.justMeldedThisTurn) {
+            return false
+        }
+
         saveSnapshot()
 
         _gameState.update { s ->
@@ -354,6 +368,7 @@ class GameViewModel : ViewModel() {
                 "${winnerSeat.title} 胡牌！(${loserSeat.title} 放槍)"
             }
         )
+        return true
     }
 
     /**
@@ -387,7 +402,6 @@ class GameViewModel : ViewModel() {
 
                 val choices = mutableListOf<DecisionChoiceProbability>()
 
-                // 花牌不能吃碰槓
                 if (!discardedTile.isFlower) {
                     if (state.canPeng(discardedTile)) {
                         choices.add(DecisionChoiceProbability("碰 ${discardedTile.name}", 0.76f))
@@ -405,7 +419,8 @@ class GameViewModel : ViewModel() {
                     }
                 }
 
-                choices.add(DecisionChoiceProbability("胡牌 (榮和)", 0.95f))
+                // 抓放槍榮和
+                choices.add(DecisionChoiceProbability("抓放槍 (榮和)", 0.95f))
                 choices.add(DecisionChoiceProbability("過 (不鳴牌)", 0.22f))
 
                 val best = choices.maxByOrNull { it.probability }
@@ -413,9 +428,9 @@ class GameViewModel : ViewModel() {
                     recommendedAction = "針對 ${fromSeat.title} 的 ${discardedTile.name}：建議 ${best?.actionText}",
                     optionsProbability = choices.sortedByDescending { it.probability },
                     explanationNote = if (fromSeat == PlayerSeat.SHANG_JIA) {
-                        "上家出牌：可吃、可碰、可槓、可胡"
+                        "上家出牌：可吃、可碰、可槓、可抓放槍"
                     } else {
-                        "${fromSeat.title}出牌：非上家不可吃，僅可碰/槓/胡"
+                        "${fromSeat.title}出牌：非上家不可吃，僅可碰/槓/抓放槍"
                     }
                 )
                 _isLoadingDecision.value = false
@@ -434,7 +449,6 @@ class GameViewModel : ViewModel() {
                     }
                 }
 
-                // 排除花牌，候選打牌
                 val candidates = hand.filter { !it.isFlower }.distinctBy { it.id }.takeLast(4)
                 candidates.forEachIndexed { index, tile ->
                     val prob = when (index) {
@@ -452,10 +466,10 @@ class GameViewModel : ViewModel() {
                 _aiDecision.value = AIDecisionResult(
                     recommendedAction = best?.actionText ?: "請選擇一張牌打出",
                     optionsProbability = sortedChoices,
-                    explanationNote = if (anGangOptions.isNotEmpty()) {
-                        "💡 偵測到可暗槓牌型！可選擇暗槓並槓尾補牌"
-                    } else {
-                        "輪到你的出牌回合，點擊手牌即可打出"
+                    explanationNote = when {
+                        state.justMeldedThisTurn -> "剛剛完成吃/碰/槓副露，當回合必須打出一張牌，嚴格禁止胡牌！"
+                        anGangOptions.isNotEmpty() -> "💡 偵測到可暗槓牌型！可選擇暗槓並槓尾補牌"
+                        else -> "輪到你的出牌回合，點擊手牌即可打出"
                     }
                 )
             } else if (state.currentTurnPlayer == PlayerSeat.SELF && state.phase == TurnPhase.AWAITING_DRAW) {

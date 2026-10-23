@@ -36,7 +36,8 @@ data class GameState(
     val history: List<GameActionRecord> = emptyList(),
     val isGameOver: Boolean = false,
     val winnerSeat: PlayerSeat? = null,
-    val loserSeat: PlayerSeat? = null
+    val loserSeat: PlayerSeat? = null,
+    val justMeldedThisTurn: Boolean = false // 剛吃/碰/槓副露完成，當回合必須打出一張牌，嚴格禁止胡牌！
 ) {
     val concealedHandCount: Int get() = handTiles.size
 
@@ -77,27 +78,18 @@ data class GameState(
         return (maxTotal - countVisibleTile(tile)).coerceAtLeast(0)
     }
 
-    /**
-     * 碰牌：花牌不能碰；自己打出的牌不能碰
-     */
     fun canPeng(targetTile: MahjongTile): Boolean {
         if (targetTile.isFlower) return false
         if (lastDiscard?.first == PlayerSeat.SELF) return false
         return handTiles.count { it.id == targetTile.id } >= 2
     }
 
-    /**
-     * 明槓：花牌不能槓；自己打出的牌不能槓
-     */
     fun canMingGang(targetTile: MahjongTile): Boolean {
         if (targetTile.isFlower) return false
         if (lastDiscard?.first == PlayerSeat.SELF) return false
         return handTiles.count { it.id == targetTile.id } >= 3
     }
 
-    /**
-     * 暗槓：花牌不能暗槓
-     */
     fun getAnGangOptions(): List<MahjongTile> {
         return handTiles
             .filter { !it.isFlower }
@@ -106,9 +98,6 @@ data class GameState(
             .map { it.value.first() }
     }
 
-    /**
-     * 吃牌：花牌不能吃
-     */
     fun getChiCombinations(targetTile: MahjongTile): List<Pair<MahjongTile, MahjongTile>> {
         if (targetTile.isFlower) return emptyList()
         if (lastDiscard?.first != PlayerSeat.SHANG_JIA) return emptyList()
@@ -144,6 +133,44 @@ data class GameState(
         }
 
         return results
+    }
+
+    companion object {
+        /**
+         * 取得某張牌所有可能的 3 張吃牌順子組合 (供他家或自己選擇具體吃法)
+         */
+        fun getAllPossibleChiSequences(tile: MahjongTile): List<List<MahjongTile>> {
+            if (tile.suit != TileSuit.WAN && tile.suit != TileSuit.TONG && tile.suit != TileSuit.TIAO) {
+                return emptyList()
+            }
+            val r = tile.rank
+            val suit = tile.suit
+            val suitTiles = MahjongTile.getTilesBySuit(suit)
+            val sequences = mutableListOf<List<MahjongTile>>()
+
+            // 情況 1: [r-2, r-1, (r)]
+            if (r >= 3) {
+                val t1 = suitTiles.find { it.rank == r - 2 }
+                val t2 = suitTiles.find { it.rank == r - 1 }
+                if (t1 != null && t2 != null) sequences.add(listOf(t1, t2, tile))
+            }
+
+            // 情況 2: [r-1, (r), r+1]
+            if (r in 2..8) {
+                val t1 = suitTiles.find { it.rank == r - 1 }
+                val t2 = suitTiles.find { it.rank == r + 1 }
+                if (t1 != null && t2 != null) sequences.add(listOf(t1, tile, t2))
+            }
+
+            // 情況 3: [(r), r+1, r+2]
+            if (r <= 7) {
+                val t1 = suitTiles.find { it.rank == r + 1 }
+                val t2 = suitTiles.find { it.rank == r + 2 }
+                if (t1 != null && t2 != null) sequences.add(listOf(tile, t1, t2))
+            }
+
+            return sequences
+        }
     }
 }
 
