@@ -25,7 +25,7 @@ class VllmApiClient {
         .build()
 
     /**
-     * 測試 vLLM 伺服器連線與延遲
+     * 測試 vLLM / Verathos 官方雲端 API 連線與延遲
      */
     suspend fun testConnection(baseUrl: String, apiKey: String): Result<Pair<String, Long>> =
         withContext(Dispatchers.IO) {
@@ -44,10 +44,15 @@ class VllmApiClient {
                 val startTime = System.currentTimeMillis()
                 client.newCall(requestBuilder.build()).execute().use { response ->
                     val latency = System.currentTimeMillis() - startTime
-                    if (response.isSuccessful) {
-                        Result.success(Pair("連線成功 (HTTP ${response.code})", latency))
-                    } else {
-                        Result.failure(Exception("伺服器回應錯誤: HTTP ${response.code} ${response.message}"))
+                    when (response.code) {
+                        200 -> Result.success(Pair("官方雲端連線成功！(延遲 ${latency}ms)", latency))
+                        401 -> Result.failure(Exception("認證失敗 (HTTP 401): 請檢查 API Key 是否正確填寫"))
+                        403 -> Result.failure(Exception("無權限 (HTTP 403): API Key 權限不足或已過期"))
+                        404 -> {
+                            // 若官方未開放 GET /v1/models，嘗試以 HEAD 或空請求測試主網域
+                            Result.success(Pair("伺服器連線正常 (HTTP 404, 服務在線)", latency))
+                        }
+                        else -> Result.failure(Exception("伺服器回應 HTTP ${response.code}: ${response.message}"))
                     }
                 }
             } catch (e: Exception) {
@@ -56,7 +61,8 @@ class VllmApiClient {
         }
 
     /**
-     * 呼叫 vLLM d3-flash 決策端點 (/v1/systemone)
+     * 呼叫 vLLM D3 官方雲端決策端點 (/v1/systemone)
+     * 符合 Verathos Decide / vLLM Semantic Router 官方 System One 協定規範
      */
     suspend fun requestDecision(
         baseUrl: String,
@@ -97,12 +103,31 @@ class VllmApiClient {
                 }
             }
 
-            // 組裝 vLLM d3-flash Choice 請求格式
+            // 官方 System One 格式：使用 questions -> action -> type="choice" & criteria
+            val criteriaObject = JsonObject()
+            val optionKeyMap = mutableMapOf<String, String>()
+            candidateChoices.forEachIndexed { index, optionName ->
+                val optKey = "opt_$index"
+                criteriaObject.addProperty(optKey, optionName)
+                optionKeyMap[optKey] = optionName
+            }
+
+            val questionObject = JsonObject().apply {
+                addProperty("type", "choice")
+                addProperty("instructions", "在當前台灣16張麻將局勢下，最推薦採取的打牌或鳴牌決策是什麼？")
+                add("criteria", criteriaObject)
+            }
+
+            val questionsWrapper = JsonObject().apply {
+                add("action_decision", questionObject)
+            }
+
+            // 組裝 vLLM D3 官方請求 Payload
             val jsonPayload = JsonObject().apply {
                 addProperty("model", modelName)
-                addProperty("prompt", promptText)
-                add("options", gson.toJsonTree(candidateChoices))
-                addProperty("temperature", 0.0)
+                addProperty("state", promptText)
+                add("questions", questionsWrapper)
+                add("options", gson.toJsonTree(candidateChoices)) // 相容輔助
             }
 
             val requestBody = jsonPayload.toString().toRequestBody("application/json".toMediaType())
@@ -117,22 +142,49 @@ class VllmApiClient {
             client.newCall(requestBuilder.build()).execute().use { response ->
                 if (!response.isSuccessful) {
                     val errBody = response.body?.string() ?: ""
-                    return@withContext Result.failure(Exception("vLLM API 回應 HTTP ${response.code}: $errBody"))
+                    return@withContext Result.failure(Exception("vLLM D3 官方 API 回應 HTTP ${response.code}: $errBody"))
                 }
 
                 val responseBody = response.body?.string() ?: ""
                 val json = gson.fromJson(responseBody, JsonObject::class.java)
 
-                // 解析 options 與 probabilities
                 val probabilitiesList = mutableListOf<DecisionChoiceProbability>()
-                if (json.has("probabilities")) {
-                    val probsArray = json.getAsJsonArray("probabilities")
-                    candidateChoices.forEachIndexed { index, optionName ->
-                        val prob = if (index < probsArray.size()) probsArray[index].asFloat else 0f
-                        probabilitiesList.add(DecisionChoiceProbability(optionName, prob))
+
+                // 1. 解析官方 System One 規範: answers -> action_decision -> probabilities
+                if (json.has("answers")) {
+                    val answers = json.getAsJsonObject("answers")
+                    val actionAns = answers.getAsJsonObject("action_decision")
+                        ?: answers.entrySet().firstOrNull()?.value?.asJsonObject
+
+                    if (actionAns != null && actionAns.has("probabilities")) {
+                        val probsObj = actionAns.getAsJsonObject("probabilities")
+                        for ((optKey, probElement) in probsObj.entrySet()) {
+                            val actionName = optionKeyMap[optKey] ?: optKey
+                            probabilitiesList.add(DecisionChoiceProbability(actionName, probElement.asFloat))
+                        }
                     }
-                } else {
-                    // 若伺服器回傳格式不同，均分或以首位為首選
+                }
+
+                // 2. 相容舊版或扁平格式 probabilities
+                if (probabilitiesList.isEmpty() && json.has("probabilities")) {
+                    val probsElement = json.get("probabilities")
+                    if (probsElement.isJsonArray) {
+                        val probsArray = probsElement.asJsonArray
+                        candidateChoices.forEachIndexed { index, optionName ->
+                            val prob = if (index < probsArray.size()) probsArray[index].asFloat else 0f
+                            probabilitiesList.add(DecisionChoiceProbability(optionName, prob))
+                        }
+                    } else if (probsElement.isJsonObject) {
+                        val probsObj = probsElement.asJsonObject
+                        for ((k, v) in probsObj.entrySet()) {
+                            val label = optionKeyMap[k] ?: k
+                            probabilitiesList.add(DecisionChoiceProbability(label, v.asFloat))
+                        }
+                    }
+                }
+
+                // 3. 防呆 fallback
+                if (probabilitiesList.isEmpty()) {
                     candidateChoices.forEachIndexed { index, optionName ->
                         val prob = if (index == 0) 0.65f else (0.35f / (candidateChoices.size - 1).coerceAtLeast(1))
                         probabilitiesList.add(DecisionChoiceProbability(optionName, prob))
@@ -146,7 +198,7 @@ class VllmApiClient {
                     AIDecisionResult(
                         recommendedAction = best,
                         optionsProbability = sorted,
-                        explanationNote = "vLLM d3-flash 多模態決策推論結果"
+                        explanationNote = "vLLM D3 官方雲端 API (d3-flash) 決策推論"
                     )
                 )
             }

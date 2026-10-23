@@ -16,8 +16,8 @@ class SettingsRepository(context: Context) {
         private const val KEY_MODEL_NAME = "model_name"
         private const val KEY_USE_MOCK_FALLBACK = "use_mock_fallback"
 
-        // Android 模擬器訪問本機電腦的預設 IP 為 10.0.2.2
-        const val DEFAULT_BASE_URL = "http://10.0.2.2:8000"
+        // vLLM D3 官方雲端 API 預設端點 (Verathos Decide 官方托管服務)
+        const val DEFAULT_BASE_URL = "https://api.verathos.ai"
         const val DEFAULT_MODEL_NAME = "d3-flash"
     }
 

@@ -72,12 +72,12 @@ fun SettingsScreen(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(14.dp)) {
-                    Text("💡 vLLM d3-flash 連線說明", color = AccentGold, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    Text("💡 vLLM D3 官方雲端 API 連線說明", color = AccentGold, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        "• 若在【Android 模擬器】中運行且 vLLM 架在你的電腦上，請填寫: http://10.0.2.2:8000\n" +
-                                "• 若使用實體手機，請填寫電腦的區域網路 IP (如 http://192.168.x.x:8000)\n" +
-                                "• 若架設在雲端主機，請填寫對應的公網網址。",
+                        "• 本 App 預設直接連線【vLLM D3 官方雲端 API (https://api.verathos.ai)】，完全無需自行架設任何伺服器！\n" +
+                                "• 請填寫您的官方 API Key，儲存後即可直接體驗 d3-flash 即時決策與視覺辨識。\n" +
+                                "• 如無官方 API Key，開啟下方「離線備援模式」亦可正常進行麻將規則體驗。",
                         color = TextMuted,
                         fontSize = 12.sp,
                         lineHeight = 18.sp
@@ -92,7 +92,7 @@ fun SettingsScreen(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(14.dp)) {
-                    Text("vLLM 伺服器 Base URL：", color = AccentGold, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    Text("API 官方雲端 Base URL：", color = AccentGold, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                     Spacer(modifier = Modifier.height(6.dp))
 
                     OutlinedTextField(
@@ -101,7 +101,7 @@ fun SettingsScreen(
                             baseUrl = it
                             connectionTestResult = null
                         },
-                        placeholder = { Text("http://10.0.2.2:8000", color = Color.Gray) },
+                        placeholder = { Text("https://api.verathos.ai", color = Color.Gray) },
                         modifier = Modifier.fillMaxWidth(),
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedTextColor = TextLight,
@@ -120,18 +120,21 @@ fun SettingsScreen(
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         OutlinedButton(
-                            onClick = { baseUrl = "http://10.0.2.2:8000" },
+                            onClick = { baseUrl = "https://api.verathos.ai" },
                             modifier = Modifier.weight(1f),
                             contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp)
                         ) {
-                            Text("模擬器 (10.0.2.2)", fontSize = 11.sp, color = TextLight)
+                            Text("官方雲端 (api.verathos.ai)", fontSize = 11.sp, color = TextLight)
                         }
                         OutlinedButton(
-                            onClick = { baseUrl = "http://127.0.0.1:8000" },
+                            onClick = { 
+                                baseUrl = "https://api.verathos.ai"
+                                modelName = "d3-flash"
+                            },
                             modifier = Modifier.weight(1f),
                             contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp)
                         ) {
-                            Text("本機 (127.0.0.1)", fontSize = 11.sp, color = TextLight)
+                            Text("重設回官方預設", fontSize = 11.sp, color = TextLight)
                         }
                     }
                 }
