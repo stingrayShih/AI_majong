@@ -377,12 +377,54 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
+     * 記錄他家暗槓 (4張暗牌未公開，進入槓尾補牌)
+     */
+    fun onOtherAnGang(seat: PlayerSeat) {
+        val current = _gameState.value
+        if (current.isGameOver) return
+        if (current.currentTurnPlayer != seat) return
+        if (current.justMeldedThisTurn) return
+
+        saveSnapshot()
+
+        _gameState.update { s ->
+            val meld = Meld(
+                type = ActionType.GANG_AN,
+                tiles = emptyList(),
+                triggerTile = null,
+                targetSeat = seat
+            )
+            val list = (s.otherMelds[seat] ?: emptyList()) + meld
+            val newOtherMelds = s.otherMelds.toMutableMap().apply { put(seat, list) }
+
+            val record = GameActionRecord(
+                turnNumber = s.currentTurn,
+                seat = seat,
+                actionType = ActionType.GANG_AN,
+                tile = null,
+                extraTiles = emptyList()
+            )
+
+            s.copy(
+                otherMelds = newOtherMelds,
+                currentTurnPlayer = seat,
+                phase = TurnPhase.AWAITING_DRAW, // 槓尾補牌
+                justMeldedThisTurn = true,
+                history = s.history + record
+            )
+        }
+
+        triggerAIDecision()
+    }
+
+    /**
      * 他家宣告補槓 (加槓/明槓)
      */
     fun onOtherBuGang(seat: PlayerSeat, meld: Meld) {
         val current = _gameState.value
         if (current.isGameOver) return
         if (current.currentTurnPlayer != seat) return
+        if (current.justMeldedThisTurn) return
 
         val buGangTile = meld.tiles.firstOrNull() ?: meld.triggerTile ?: return
 

@@ -93,3 +93,22 @@ fun MahjongTileView(
         }
     }
 }
+
+/**
+ * 麻將暗牌背面 (未公開的暗牌)
+ */
+@Composable
+fun MahjongTileBackView(
+    modifier: Modifier = Modifier,
+    width: Dp = 44.dp,
+    height: Dp = 60.dp
+) {
+    Box(
+        modifier = modifier
+            .size(width = width, height = height)
+            .shadow(2.dp, shape = RoundedCornerShape(4.dp))
+            .clip(RoundedCornerShape(4.dp))
+            .background(Color(0xFF1B5E20))
+            .border(1.dp, TileBorder, RoundedCornerShape(4.dp))
+    )
+}

@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.aimajong.app.model.*
 import com.aimajong.app.ui.components.DebugInspectorDialog
+import com.aimajong.app.ui.components.MahjongTileBackView
 import com.aimajong.app.ui.components.MahjongTileView
 import com.aimajong.app.ui.components.TilePickerDialog
 import com.aimajong.app.ui.theme.*
@@ -50,6 +51,7 @@ fun GameScreen(
     var showTilePickerForOtherTurn by remember { mutableStateOf(false) }
     var showOtherMeldDialog by remember { mutableStateOf(false) }
     var showOtherBuGangDialog by remember { mutableStateOf(false) }
+    var showOtherAnGangConfirmDialog by remember { mutableStateOf(false) }
     var showSelfMeldDialog by remember { mutableStateOf(false) }
     var showAnGangDialog by remember { mutableStateOf(false) }
     var showBuGangDialog by remember { mutableStateOf(false) }
@@ -414,6 +416,7 @@ fun GameScreen(
                 onAnGangClicked = { showAnGangDialog = true },
                 onBuGangClicked = { showBuGangDialog = true },
                 onOtherTurnClicked = { showTilePickerForOtherTurn = true },
+                onOtherAnGangClicked = { showOtherAnGangConfirmDialog = true },
                 onOtherBuGangClicked = {
                     val currentSeat = state.currentTurnPlayer
                     val otherPengs = state.otherMelds[currentSeat]?.filter { it.type == ActionType.PENG } ?: emptyList()
@@ -518,6 +521,33 @@ fun GameScreen(
                 viewModel.onOtherBuGang(currentSeat, meld)
                 showOtherBuGangDialog = false
             }
+        )
+    }
+
+    // 他家暗槓確認
+    if (showOtherAnGangConfirmDialog) {
+        val currentSeat = state.currentTurnPlayer
+        AlertDialog(
+            onDismissRequest = { showOtherAnGangConfirmDialog = false },
+            title = { Text("記錄【${currentSeat.title}】暗槓", color = AccentGold, fontWeight = FontWeight.Bold) },
+            text = { Text("記錄【${currentSeat.title}】暗槓 1 組（暗牌未公開，無法被搶槓）。\n該玩家將進入槓尾補牌，請於摸牌後點擊「記錄摸打出牌」。", color = TextLight) },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.onOtherAnGang(currentSeat)
+                        showOtherAnGangConfirmDialog = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6A1B9A))
+                ) {
+                    Text("確認暗槓 (槓尾補牌)", color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showOtherAnGangConfirmDialog = false }) {
+                    Text("取消", color = TextMuted)
+                }
+            },
+            containerColor = CardBackground
         )
     }
 
@@ -634,6 +664,7 @@ fun DynamicActionBar(
     onAnGangClicked: () -> Unit,
     onBuGangClicked: () -> Unit,
     onOtherTurnClicked: () -> Unit,
+    onOtherAnGangClicked: () -> Unit,
     onOtherBuGangClicked: () -> Unit,
     onOtherMeldClicked: () -> Unit,
     onPassCallClicked: () -> Unit,
@@ -794,7 +825,7 @@ fun DynamicActionBar(
 
         else -> {
             val currentSeat = state.currentTurnPlayer
-            val canOtherHuNow = !state.justMeldedThisTurn
+            val canOtherActNow = !state.justMeldedThisTurn
             val otherPengs = remember(state.otherMelds, currentSeat) {
                 state.otherMelds[currentSeat]?.filter { it.type == ActionType.PENG } ?: emptyList()
             }
@@ -810,9 +841,14 @@ fun DynamicActionBar(
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = AccentGold)
                     ) {
-                        Text("記錄【${currentSeat.title}】摸打出牌", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        Text(
+                            text = if (state.justMeldedThisTurn) "記錄【${currentSeat.title}】吃碰後打牌" else "記錄【${currentSeat.title}】摸打出牌",
+                            color = Color.Black,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp
+                        )
                     }
-                    if (canOtherHuNow) {
+                    if (canOtherActNow) {
                         Button(
                             onClick = onZiMoClicked,
                             modifier = Modifier.weight(1.2f).height(48.dp),
@@ -823,19 +859,38 @@ fun DynamicActionBar(
                     }
                 }
 
-                if (otherPengs.isNotEmpty()) {
-                    Button(
-                        onClick = onOtherBuGangClicked,
-                        modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00897B)),
-                        shape = RoundedCornerShape(10.dp)
+                // 只有在非吃碰後的正常回合 (canOtherActNow) 才能暗槓或補槓！
+                if (canOtherActNow) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        val label = if (otherPengs.size == 1) {
-                            "【${currentSeat.title}】補槓 (${otherPengs.first().tiles.first().name})"
-                        } else {
-                            "【${currentSeat.title}】補槓 (共 ${otherPengs.size} 組碰牌可選)"
+                        Button(
+                            onClick = onOtherAnGangClicked,
+                            modifier = Modifier.weight(1f).heightIn(min = 44.dp),
+                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6A1B9A)),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Text("【${currentSeat.title}】暗槓", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                         }
-                        Text("⏩ $label", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+
+                        if (otherPengs.isNotEmpty()) {
+                            Button(
+                                onClick = onOtherBuGangClicked,
+                                modifier = Modifier.weight(1f).heightIn(min = 44.dp),
+                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00897B)),
+                                shape = RoundedCornerShape(10.dp)
+                            ) {
+                                val label = if (otherPengs.size == 1) {
+                                    "【${currentSeat.title}】補槓 (${otherPengs.first().tiles.first().name})"
+                                } else {
+                                    "【${currentSeat.title}】補槓 (${otherPengs.size}組可選)"
+                                }
+                                Text(label, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            }
+                        }
                     }
                 }
             }
@@ -875,13 +930,20 @@ fun PlayerRiverAndMeldRow(
                 horizontalArrangement = Arrangement.spacedBy(2.dp)
             ) {
                 melds.forEach { meld ->
+                    val isHiddenOtherAnGang = meld.type == ActionType.GANG_AN && seatName != "我的打牌"
                     Row(
                         modifier = Modifier
-                            .border(1.dp, if (meld.type == ActionType.GANG_AN) Color.Magenta else AccentGold, RoundedCornerShape(3.dp))
+                            .border(1.dp, if (meld.type == ActionType.GANG_AN) Color(0xFF6A1B9A) else AccentGold, RoundedCornerShape(3.dp))
                             .padding(1.dp)
                     ) {
-                        meld.tiles.forEach { tile ->
-                            MahjongTileView(tile = tile, width = 16.dp, height = 24.dp)
+                        if (isHiddenOtherAnGang || meld.tiles.isEmpty()) {
+                            repeat(4) {
+                                MahjongTileBackView(width = 16.dp, height = 24.dp)
+                            }
+                        } else {
+                            meld.tiles.forEach { tile ->
+                                MahjongTileView(tile = tile, width = 16.dp, height = 24.dp)
+                            }
                         }
                     }
                     Spacer(modifier = Modifier.width(2.dp))

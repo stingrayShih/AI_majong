@@ -292,4 +292,22 @@ class MahjongModelAndRuleTest {
         // 對家宣告補槓 東風 -> 無法搶槓
         assertFalse(state.canSelfQiangGang(east))
     }
+
+    @Test
+    fun testOtherPlayerAnGangAndVisibleCount() {
+        val east = MahjongTile.findById("east")!!
+        // 他家暗槓，即使內部存有牌，在未公開規則下也不應計入已見張數
+        val otherAnGang = Meld(
+            type = ActionType.GANG_AN,
+            tiles = listOf(east, east, east, east),
+            triggerTile = null,
+            targetSeat = PlayerSeat.SHANG_JIA
+        )
+        val state = GameState(
+            handTiles = emptyList(),
+            otherMelds = mapOf(PlayerSeat.SHANG_JIA to listOf(otherAnGang))
+        )
+        assertEquals(0, state.countVisibleTile(east))
+        assertEquals(4, state.remainingCount(east))
+    }
 }

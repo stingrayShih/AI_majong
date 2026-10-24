@@ -63,11 +63,16 @@ data class GameState(
         }
         val allMelds = melds + otherMelds.values.flatten()
         allMelds.forEach { m ->
-            count += m.tiles.count { it.id == tile.id }
-            // 若該副露包含取自他人牌河的觸發牌 (triggerTile)
-            // 該牌已在 discards 牌河中被計入，在此扣除 1 張避免重複計算 (Issue #2)
-            if (m.triggerTile?.id == tile.id) {
-                count -= 1
+            // 他家暗槓未公開，不計入已知看見張數
+            if (m.type == ActionType.GANG_AN && m.targetSeat != PlayerSeat.SELF) {
+                // 忽略未公開暗槓
+            } else {
+                count += m.tiles.count { it.id == tile.id }
+                // 若該副露包含取自他人牌河的觸發牌 (triggerTile)
+                // 該牌已在 discards 牌河中被計入，在此扣除 1 張避免重複計算 (Issue #2)
+                if (m.triggerTile?.id == tile.id) {
+                    count -= 1
+                }
             }
         }
         return count.coerceAtLeast(0)
