@@ -1,7 +1,7 @@
 # 🀄 AI 台灣麻將實戰策略輔助工具 (AI_majong)
 
 一款專為**台灣 16 張麻將**（含花牌）設計的 Android 實戰策略輔助 App。
-直接串接 **vLLM Decision 3.0 (`d3-flash`) 官方雲端 API**（無需自架伺服器），即時分析手牌效能、防守向聽與鳴牌勝率機率分佈。
+直接串接 **vLLM Decision 3.0 (`d3-flash`) 官方雲端 API**（`https://decision.vllm-sr.ai`，無需自架伺服器），即時分析手牌效能、防守向聽與鳴牌勝率機率分佈。
 
 ---
 
@@ -25,7 +25,7 @@
 - **↩ 復原上一步 (Undo)**：頂部導航列支援隨時回滾操作。
 - **對局記憶與中斷恢復**：首頁常駐「▶ 繼續進行中的牌局」大卡片，搭配 `rememberSaveable` 跨 App 切換不中斷。
 - **相機拍照辨識起手牌 (CameraX)**：實裝拍照取景、水平導引框、相簿匯入與拍後手牌校對微調介面。
-- **vLLM D3 官方雲端 API**：連線官方雲端端點 (`https://api.verathos.ai/v1/systemone`)，無需自架伺服器，輸入 API Key 即可使用！
+- **vLLM D3 官方雲端 API**：連線官方雲端端點 (`https://decision.vllm-sr.ai/v1/systemone`)，無需自架伺服器，輸入 API Key (`sk-vsr-...`) 即可使用！
 
 ---
 
@@ -45,4 +45,4 @@
 - **非同步與狀態流**：Kotlin Coroutines & StateFlow
 - **建置工具**：Gradle 8.9 (Kotlin DSL + Version Catalog)
 - **相機框架**：CameraX 1.4.0 (Lifecycle, Camera2, View)
-- **決策模型端點**：vLLM Decision 3.0 官方雲端 API (`https://api.verathos.ai/v1/systemone`)，支援官方 `questions` (Choice) 決策協議與機率分佈解析。
+- **決策模型端點**：vLLM Semantic Router Decision 3.0 官方雲端 API (`https://decision.vllm-sr.ai/v1/systemone`)，API Key 格式 `sk-vsr-...`

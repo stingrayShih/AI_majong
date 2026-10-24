@@ -25,7 +25,9 @@ class VllmApiClient {
         .build()
 
     /**
-     * 測試 vLLM / Verathos 官方雲端 API 連線與延遲
+     * 測試 vLLM Semantic Router 官方雲端 API 連線與延遲
+     * 端點: https://decision.vllm-sr.ai
+     * 認證: Authorization: Bearer sk-vsr-... 或 X-API-Key: sk-vsr-...
      */
     suspend fun testConnection(baseUrl: String, apiKey: String): Result<Pair<String, Long>> =
         withContext(Dispatchers.IO) {
@@ -39,34 +41,41 @@ class VllmApiClient {
                 }
                 cleanUrl = cleanUrl.trimEnd('/')
 
-                // 優先測試 /v1/models，若無則備援測試 /v1/systemone 或首頁
+                // 官方提供的模型列表端點: GET /v1/systemone/models (無需認證)
                 val endpointsToTry = listOf(
+                    "$cleanUrl/v1/systemone/models",
                     "$cleanUrl/v1/models",
-                    "$cleanUrl/v1/systemone",
+                    "$cleanUrl/docs",
                     cleanUrl
                 )
 
                 var lastException: Exception? = null
                 for (url in endpointsToTry) {
                     try {
-                        val requestBuilder = Request.Builder().url(url)
+                        val requestBuilder = Request.Builder().url(url).get()
                         if (apiKey.isNotBlank()) {
-                            requestBuilder.addHeader("Authorization", "Bearer ${apiKey.trim()}")
+                            val trimmedKey = apiKey.trim()
+                            requestBuilder.addHeader("Authorization", "Bearer $trimmedKey")
+                            requestBuilder.addHeader("X-API-Key", trimmedKey)
                         }
-                        requestBuilder.get()
 
                         val startTime = System.currentTimeMillis()
                         client.newCall(requestBuilder.build()).execute().use { response ->
                             val latency = (System.currentTimeMillis() - startTime).coerceAtLeast(1)
+                            val body = response.body?.string() ?: ""
                             return@withContext when (response.code) {
-                                in 200..299 -> Result.success(Pair("連線成功！(HTTP ${response.code})", latency))
-                                401 -> Result.success(Pair("伺服器在線！(HTTP 401: 需填寫有效 API Key)", latency))
-                                403 -> Result.success(Pair("伺服器在線！(HTTP 403: API Key 權限不足)", latency))
-                                405 -> Result.success(Pair("伺服器在線！(HTTP 405: 服務端點活躍)", latency))
-                                400, 422 -> Result.success(Pair("伺服器在線！(HTTP ${response.code})", latency))
-                                404 -> Result.success(Pair("伺服器在線！(HTTP 404: 網路通暢)", latency))
+                                in 200..299 -> Result.success(Pair("✅ 連線成功！(HTTP ${response.code})", latency))
+                                401 -> Result.success(Pair("伺服器在線 (HTTP 401: 需填寫有效 API Key，格式 sk-vsr-...)", latency))
+                                403 -> Result.success(Pair("伺服器在線 (HTTP 403: API Key 權限不足或格式錯誤)", latency))
+                                405 -> Result.success(Pair("伺服器在線 (HTTP 405: 服務端點活躍)", latency))
+                                400, 422 -> Result.success(Pair("伺服器在線 (HTTP ${response.code}: 端點正常運作)", latency))
+                                404 -> {
+                                    // 404 for this specific endpoint, try next
+                                    lastException = Exception("HTTP 404 at $url")
+                                    null // continue to next endpoint
+                                }
                                 else -> Result.failure(Exception("伺服器回應 HTTP ${response.code}: ${response.message}"))
-                            }
+                            } ?: continue
                         }
                     } catch (e: Exception) {
                         lastException = e
@@ -80,8 +89,9 @@ class VllmApiClient {
         }
 
     /**
-     * 呼叫 vLLM D3 官方雲端決策端點 (/v1/systemone)
-     * 符合 Verathos Decide / vLLM Semantic Router 官方 System One 協定規範
+     * 呼叫 vLLM Semantic Router 官方 /v1/systemone 端點
+     * 端點: https://decision.vllm-sr.ai/v1/systemone
+     * 認證: Authorization: Bearer sk-vsr-... 或 X-API-Key: sk-vsr-...
      */
     suspend fun requestDecision(
         baseUrl: String,
@@ -145,12 +155,11 @@ class VllmApiClient {
                 add("action_decision", questionObject)
             }
 
-            // 組裝 vLLM D3 官方請求 Payload
+            // 組裝 vLLM Semantic Router 官方請求 Payload (不含 options 輔助欄位)
             val jsonPayload = JsonObject().apply {
                 addProperty("model", modelName)
                 addProperty("state", promptText)
                 add("questions", questionsWrapper)
-                add("options", gson.toJsonTree(candidateChoices)) // 相容輔助
             }
 
             val requestBody = jsonPayload.toString().toRequestBody("application/json".toMediaType())
@@ -159,7 +168,9 @@ class VllmApiClient {
                 .post(requestBody)
 
             if (apiKey.isNotBlank()) {
-                requestBuilder.addHeader("Authorization", "Bearer $apiKey")
+                val trimmedKey = apiKey.trim()
+                requestBuilder.addHeader("Authorization", "Bearer $trimmedKey")
+                requestBuilder.addHeader("X-API-Key", trimmedKey)
             }
 
             client.newCall(requestBuilder.build()).execute().use { response ->

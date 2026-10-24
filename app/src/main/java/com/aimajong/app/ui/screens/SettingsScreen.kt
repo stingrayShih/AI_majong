@@ -75,12 +75,13 @@ fun SettingsScreen(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(14.dp)) {
-                    Text("💡 vLLM D3 官方雲端 API 連線說明", color = AccentGold, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    Text("💡 vLLM Semantic Router 官方 API 連線說明", color = AccentGold, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        "• 本 App 預設直接連線【vLLM D3 官方雲端 API (https://api.verathos.ai)】，完全無需自行架設任何伺服器！\n" +
-                                "• 請填寫您的官方 API Key，儲存後即可直接體驗 d3-flash 即時決策與視覺辨識。\n" +
-                                "• 如無官方 API Key，開啟下方「離線備援模式」亦可正常進行麻將規則體驗。",
+                        "• 預設連線官方端點: https://decision.vllm-sr.ai\n" +
+                                "• API Key 格式: sk-vsr-... (可於官網取得)\n" +
+                                "• 無需自行架設伺服器，填入 API Key 即可使用 d3-flash 即時決策。\n" +
+                                "• 如無 API Key，開啟下方「離線備援模式」可體驗本地規則引擎。",
                         color = TextMuted,
                         fontSize = 12.sp,
                         lineHeight = 18.sp
@@ -95,7 +96,7 @@ fun SettingsScreen(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(14.dp)) {
-                    Text("API 官方雲端 Base URL：", color = AccentGold, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    Text("API Base URL：", color = AccentGold, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                     Spacer(modifier = Modifier.height(6.dp))
 
                     OutlinedTextField(
@@ -104,7 +105,7 @@ fun SettingsScreen(
                             baseUrl = it
                             connectionTestResult = null
                         },
-                        placeholder = { Text("https://api.verathos.ai", color = Color.Gray) },
+                        placeholder = { Text("https://decision.vllm-sr.ai", color = Color.Gray) },
                         modifier = Modifier.fillMaxWidth(),
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedTextColor = TextLight,
@@ -123,15 +124,15 @@ fun SettingsScreen(
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         OutlinedButton(
-                            onClick = { baseUrl = "https://api.verathos.ai" },
+                            onClick = { baseUrl = "https://decision.vllm-sr.ai" },
                             modifier = Modifier.weight(1f),
                             contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp)
                         ) {
-                            Text("官方雲端 (api.verathos.ai)", fontSize = 11.sp, color = TextLight)
+                            Text("官方 (decision.vllm-sr.ai)", fontSize = 10.sp, color = TextLight)
                         }
                         OutlinedButton(
                             onClick = { 
-                                baseUrl = "https://api.verathos.ai"
+                                baseUrl = "https://decision.vllm-sr.ai"
                                 modelName = "d3-flash"
                             },
                             modifier = Modifier.weight(1f),
@@ -167,12 +168,12 @@ fun SettingsScreen(
 
                     Spacer(modifier = Modifier.height(10.dp))
 
-                    Text("API Key (選填，若有驗證請填)：", color = AccentGold, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    Text("API Key：", color = AccentGold, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                     Spacer(modifier = Modifier.height(4.dp))
                     OutlinedTextField(
                         value = apiKey,
                         onValueChange = { apiKey = it },
-                        placeholder = { Text("Bearer Token 或空白", color = Color.Gray) },
+                        placeholder = { Text("sk-vsr-...", color = Color.Gray) },
                         modifier = Modifier.fillMaxWidth(),
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedTextColor = TextLight,
