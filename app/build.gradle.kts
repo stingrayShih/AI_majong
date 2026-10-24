@@ -74,5 +74,7 @@ dependencies {
     implementation(libs.gson)
     implementation(libs.kotlinx.coroutines.android)
 
+    testImplementation(libs.junit)
+
     debugImplementation(libs.androidx.ui.tooling)
 }
