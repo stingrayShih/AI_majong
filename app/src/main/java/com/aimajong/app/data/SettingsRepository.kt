@@ -15,11 +15,16 @@ class SettingsRepository(context: Context) {
         private const val KEY_API_KEY = "server_api_key"
         private const val KEY_MODEL_NAME = "model_name"
         private const val KEY_USE_MOCK_FALLBACK = "use_mock_fallback"
+        private const val KEY_DEBUG_MODE = "debug_mode"
 
         // vLLM Semantic Router 官方雲端 Decision API
         const val DEFAULT_BASE_URL = "https://decision.vllm-sr.ai"
         const val DEFAULT_MODEL_NAME = "d3-flash"
     }
+
+    var isDebugMode: Boolean
+        get() = prefs.getBoolean(KEY_DEBUG_MODE, true)
+        set(value) = prefs.edit().putBoolean(KEY_DEBUG_MODE, value).apply()
 
     var serverBaseUrl: String
         get() = prefs.getString(KEY_BASE_URL, DEFAULT_BASE_URL) ?: DEFAULT_BASE_URL

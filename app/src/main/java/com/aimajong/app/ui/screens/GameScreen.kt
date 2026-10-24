@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.aimajong.app.model.*
+import com.aimajong.app.ui.components.DebugInspectorDialog
 import com.aimajong.app.ui.components.MahjongTileView
 import com.aimajong.app.ui.components.TilePickerDialog
 import com.aimajong.app.ui.theme.*
@@ -50,6 +51,7 @@ fun GameScreen(
     var showHuDialog by remember { mutableStateOf(false) }
     var huInitialIsZiMo by remember { mutableStateOf(false) }
     var showChangeDealerDialog by remember { mutableStateOf(false) }
+    var showDebugDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -176,8 +178,27 @@ fun GameScreen(
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Bold
                         )
-                        if (isLoadingDecision) {
-                            CircularProgressIndicator(color = AccentGold, modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (viewModel.settingsRepo.isDebugMode) {
+                                Surface(
+                                    shape = RoundedCornerShape(4.dp),
+                                    color = AccentGold.copy(alpha = 0.15f),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, AccentGold.copy(alpha = 0.8f)),
+                                    modifier = Modifier.clickable { showDebugDialog = true }
+                                ) {
+                                    Text(
+                                        text = "🪲 檢視報文",
+                                        color = AccentGold,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(6.dp))
+                            }
+                            if (isLoadingDecision) {
+                                CircularProgressIndicator(color = AccentGold, modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
+                            }
                         }
                     }
 
@@ -400,6 +421,17 @@ fun GameScreen(
                 showChangeDealerDialog = false
                 Toast.makeText(context, "已將莊家設定為: ${seat.title}", Toast.LENGTH_SHORT).show()
             }
+        )
+    }
+
+    // 決策報文偵錯檢視視窗
+    if (showDebugDialog) {
+        val latestLog by viewModel.vllmApiClient.latestDebugLog.collectAsState()
+        val logHistory by viewModel.vllmApiClient.debugLogHistory.collectAsState()
+        DebugInspectorDialog(
+            initialLog = latestLog,
+            logHistory = logHistory,
+            onDismiss = { showDebugDialog = false }
         )
     }
 }

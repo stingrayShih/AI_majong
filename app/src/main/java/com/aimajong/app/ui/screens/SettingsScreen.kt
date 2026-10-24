@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aimajong.app.data.SettingsRepository
 import com.aimajong.app.network.VllmApiClient
+import com.aimajong.app.ui.components.DebugInspectorDialog
 import com.aimajong.app.ui.theme.*
 import kotlinx.coroutines.launch
 
@@ -41,10 +42,12 @@ fun SettingsScreen(
     var apiKey by remember { mutableStateOf(settingsRepo.apiKey) }
     var modelName by remember { mutableStateOf(settingsRepo.modelName) }
     var useMockFallback by remember { mutableStateOf(settingsRepo.useMockFallback) }
+    var isDebugMode by remember { mutableStateOf(settingsRepo.isDebugMode) }
 
     var isTestingConnection by remember { mutableStateOf(false) }
     var connectionTestResult by remember { mutableStateOf<Pair<Boolean, String>?>(null) }
     var showResultDialog by remember { mutableStateOf(false) }
+    var showDebugDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -208,6 +211,28 @@ fun SettingsScreen(
                 }
             }
 
+            // 偵錯模式設定 (Debug Mode)
+            Card(
+                colors = CardDefaults.cardColors(containerColor = CardBackground),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier.padding(14.dp).fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("🪲 決策偵錯與報文檢視模式", color = AccentGold, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        Text("開啟後可在打牌決策與拍照辨識畫面隨時開啟「🪲 檢視報文」，查閱完整 Request/Response JSON 與延遲數據", color = TextMuted, fontSize = 11.sp)
+                    }
+                    Switch(
+                        checked = isDebugMode,
+                        onCheckedChange = { isDebugMode = it }
+                    )
+                }
+            }
+
             // 測試連線按鈕
             Button(
                 onClick = {
@@ -262,17 +287,30 @@ fun SettingsScreen(
                     color = if (isSuccess) Color(0xFF1B5E20) else Color(0xFFC62828),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Row(
-                        modifier = Modifier.padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = if (isSuccess) Icons.Default.CheckCircle else Icons.Default.Error,
-                            contentDescription = null,
-                            tint = Color.White
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(message, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(
+                                imageVector = if (isSuccess) Icons.Default.CheckCircle else Icons.Default.Error,
+                                contentDescription = null,
+                                tint = Color.White
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(message, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OutlinedButton(
+                            onClick = { showDebugDialog = true },
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.7f)),
+                            shape = RoundedCornerShape(6.dp),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                            modifier = Modifier.height(30.dp)
+                        ) {
+                            Text("🪲 檢視本次測試報文 (Request/Response)", fontSize = 11.sp, color = Color.White)
+                        }
                     }
                 }
             }
@@ -285,6 +323,7 @@ fun SettingsScreen(
                     settingsRepo.apiKey = apiKey.trim()
                     settingsRepo.modelName = modelName.trim()
                     settingsRepo.useMockFallback = useMockFallback
+                    settingsRepo.isDebugMode = isDebugMode
                     Toast.makeText(context, "設定已保存並套用！", Toast.LENGTH_SHORT).show()
                     onBack()
                 },
@@ -327,6 +366,16 @@ fun SettingsScreen(
                     lineHeight = 20.sp
                 )
             },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showResultDialog = false
+                        showDebugDialog = true
+                    }
+                ) {
+                    Text("🪲 檢視完整報文", color = AccentGold, fontWeight = FontWeight.Bold)
+                }
+            },
             confirmButton = {
                 Button(
                     onClick = { showResultDialog = false },
@@ -336,6 +385,16 @@ fun SettingsScreen(
                 }
             },
             containerColor = CardBackground
+        )
+    }
+
+    if (showDebugDialog) {
+        val latestLog by apiClient.latestDebugLog.collectAsState()
+        val logHistory by apiClient.debugLogHistory.collectAsState()
+        DebugInspectorDialog(
+            initialLog = latestLog,
+            logHistory = logHistory,
+            onDismiss = { showDebugDialog = false }
         )
     }
 }

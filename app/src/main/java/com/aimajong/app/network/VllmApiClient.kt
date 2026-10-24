@@ -4,9 +4,15 @@ import android.graphics.Bitmap
 import android.util.Base64
 import com.aimajong.app.model.*
 import com.google.gson.Gson
+import com.google.gson.GsonBuilder
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
+import com.google.gson.JsonParser
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -18,6 +24,53 @@ import java.util.concurrent.TimeUnit
 class VllmApiClient {
 
     private val gson = Gson()
+    private val prettyGson = GsonBuilder().setPrettyPrinting().create()
+
+    // 偵錯報文 StateFlow，讓 UI 隨時能監看每一次呼叫與回應
+    private val _latestDebugLog = MutableStateFlow<ApiDebugLog?>(null)
+    val latestDebugLog: StateFlow<ApiDebugLog?> = _latestDebugLog.asStateFlow()
+
+    private val _debugLogHistory = MutableStateFlow<List<ApiDebugLog>>(emptyList())
+    val debugLogHistory: StateFlow<List<ApiDebugLog>> = _debugLogHistory.asStateFlow()
+
+    fun recordDebugLog(
+        title: String,
+        endpoint: String,
+        model: String,
+        httpCode: Int?,
+        latencyMs: Long,
+        requestJson: String,
+        responseJson: String,
+        isSuccess: Boolean,
+        errorMessage: String? = null
+    ) {
+        val formattedReq = formatJson(requestJson)
+        val formattedResp = formatJson(responseJson)
+        val log = ApiDebugLog(
+            title = title,
+            endpoint = endpoint,
+            model = model,
+            httpCode = httpCode,
+            latencyMs = latencyMs,
+            requestJson = formattedReq,
+            responseJson = formattedResp,
+            isSuccess = isSuccess,
+            errorMessage = errorMessage
+        )
+        _latestDebugLog.value = log
+        _debugLogHistory.update { listOf(log) + it.take(29) } // 保存最近 30 筆
+    }
+
+    private fun formatJson(raw: String): String {
+        if (raw.isBlank()) return raw
+        return try {
+            val element = JsonParser.parseString(raw)
+            prettyGson.toJson(element)
+        } catch (e: Exception) {
+            raw
+        }
+    }
+
     private val client = OkHttpClient.Builder()
         .connectTimeout(4, TimeUnit.SECONDS)
         .readTimeout(6, TimeUnit.SECONDS)
@@ -82,6 +135,18 @@ class VllmApiClient {
                 val responseBody = response.body?.string() ?: ""
                 response.close()
 
+                recordDebugLog(
+                    title = "連線與模型認證測試 (Ping)",
+                    endpoint = endpoint,
+                    model = actualModel,
+                    httpCode = code,
+                    latencyMs = latency,
+                    requestJson = payload.toString(),
+                    responseJson = responseBody,
+                    isSuccess = (code == 200),
+                    errorMessage = if (code != 200) extractErrorMessage(responseBody) ?: "HTTP $code" else null
+                )
+
                 when (code) {
                     200 -> {
                         // 200 表示 API Key 完全正確，且模型成功完成決策推論！
@@ -119,7 +184,19 @@ class VllmApiClient {
                     }
                 }
             } catch (e: Exception) {
-                Result.failure(Exception("❌ 無法連線至伺服器：${e.localizedMessage ?: e.message}"))
+                val err = e.localizedMessage ?: e.message ?: "無法連線"
+                recordDebugLog(
+                    title = "連線與模型認證測試 (連線異常)",
+                    endpoint = "$baseUrl/v1/systemone",
+                    model = modelName,
+                    httpCode = null,
+                    latencyMs = 0,
+                    requestJson = "{}",
+                    responseJson = "",
+                    isSuccess = false,
+                    errorMessage = err
+                )
+                Result.failure(Exception("❌ 無法連線至伺服器：$err"))
             }
         }
 
@@ -228,70 +305,106 @@ class VllmApiClient {
                 requestBuilder.addHeader("X-API-Key", trimmedKey)
             }
 
-            client.newCall(requestBuilder.build()).execute().use { response ->
-                if (!response.isSuccessful) {
-                    val errBody = response.body?.string() ?: ""
-                    return@withContext Result.failure(Exception("vLLM D3 官方 API 回應 HTTP ${response.code}: $errBody"))
-                }
+            val startTime = System.currentTimeMillis()
+            val response = client.newCall(requestBuilder.build()).execute()
+            val latency = (System.currentTimeMillis() - startTime).coerceAtLeast(1)
+            val code = response.code
+            val responseBody = response.body?.string() ?: ""
+            response.close()
 
-                val responseBody = response.body?.string() ?: ""
-                val json = gson.fromJson(responseBody, JsonObject::class.java)
+            if (code !in 200..299) {
+                recordDebugLog(
+                    title = "出牌決策 (第${state.currentTurn}巡 - 失敗)",
+                    endpoint = endpoint,
+                    model = modelName,
+                    httpCode = code,
+                    latencyMs = latency,
+                    requestJson = jsonPayload.toString(),
+                    responseJson = responseBody,
+                    isSuccess = false,
+                    errorMessage = "vLLM D3 官方 API 回應 HTTP $code: $responseBody"
+                )
+                return@withContext Result.failure(Exception("vLLM D3 官方 API 回應 HTTP $code: $responseBody"))
+            }
 
-                val probabilitiesList = mutableListOf<DecisionChoiceProbability>()
+            recordDebugLog(
+                title = "出牌決策 (第${state.currentTurn}巡)",
+                endpoint = endpoint,
+                model = modelName,
+                httpCode = code,
+                latencyMs = latency,
+                requestJson = jsonPayload.toString(),
+                responseJson = responseBody,
+                isSuccess = true
+            )
 
-                // 1. 解析官方 System One 規範: answers -> action_decision -> probabilities
-                if (json.has("answers")) {
-                    val answers = json.getAsJsonObject("answers")
-                    val actionAns = answers.getAsJsonObject("action_decision")
-                        ?: answers.entrySet().firstOrNull()?.value?.asJsonObject
+            val json = gson.fromJson(responseBody, JsonObject::class.java)
 
-                    if (actionAns != null && actionAns.has("probabilities")) {
-                        val probsObj = actionAns.getAsJsonObject("probabilities")
-                        for ((optKey, probElement) in probsObj.entrySet()) {
-                            val actionName = optionKeyMap[optKey] ?: optKey
-                            probabilitiesList.add(DecisionChoiceProbability(actionName, probElement.asFloat))
-                        }
+            val probabilitiesList = mutableListOf<DecisionChoiceProbability>()
+
+            // 1. 解析官方 System One 規範: answers -> action_decision -> probabilities
+            if (json.has("answers")) {
+                val answers = json.getAsJsonObject("answers")
+                val actionAns = answers.getAsJsonObject("action_decision")
+                    ?: answers.entrySet().firstOrNull()?.value?.asJsonObject
+
+                if (actionAns != null && actionAns.has("probabilities")) {
+                    val probsObj = actionAns.getAsJsonObject("probabilities")
+                    for ((optKey, probElement) in probsObj.entrySet()) {
+                        val actionName = optionKeyMap[optKey] ?: optKey
+                        probabilitiesList.add(DecisionChoiceProbability(actionName, probElement.asFloat))
                     }
                 }
+            }
 
-                // 2. 相容舊版或扁平格式 probabilities
-                if (probabilitiesList.isEmpty() && json.has("probabilities")) {
-                    val probsElement = json.get("probabilities")
-                    if (probsElement.isJsonArray) {
-                        val probsArray = probsElement.asJsonArray
-                        candidateChoices.forEachIndexed { index, optionName ->
-                            val prob = if (index < probsArray.size()) probsArray[index].asFloat else 0f
-                            probabilitiesList.add(DecisionChoiceProbability(optionName, prob))
-                        }
-                    } else if (probsElement.isJsonObject) {
-                        val probsObj = probsElement.asJsonObject
-                        for ((k, v) in probsObj.entrySet()) {
-                            val label = optionKeyMap[k] ?: k
-                            probabilitiesList.add(DecisionChoiceProbability(label, v.asFloat))
-                        }
-                    }
-                }
-
-                // 3. 防呆 fallback
-                if (probabilitiesList.isEmpty()) {
+            // 2. 相容舊版或扁平格式 probabilities
+            if (probabilitiesList.isEmpty() && json.has("probabilities")) {
+                val probsElement = json.get("probabilities")
+                if (probsElement.isJsonArray) {
+                    val probsArray = probsElement.asJsonArray
                     candidateChoices.forEachIndexed { index, optionName ->
-                        val prob = if (index == 0) 0.65f else (0.35f / (candidateChoices.size - 1).coerceAtLeast(1))
+                        val prob = if (index < probsArray.size()) probsArray[index].asFloat else 0f
                         probabilitiesList.add(DecisionChoiceProbability(optionName, prob))
                     }
+                } else if (probsElement.isJsonObject) {
+                    val probsObj = probsElement.asJsonObject
+                    for ((k, v) in probsObj.entrySet()) {
+                        val label = optionKeyMap[k] ?: k
+                        probabilitiesList.add(DecisionChoiceProbability(label, v.asFloat))
+                    }
                 }
-
-                val sorted = probabilitiesList.sortedByDescending { it.probability }
-                val best = sorted.firstOrNull()?.actionText ?: candidateChoices.first()
-
-                Result.success(
-                    AIDecisionResult(
-                        recommendedAction = best,
-                        optionsProbability = sorted,
-                        explanationNote = "vLLM D3 官方雲端 API (d3-flash) 決策推論"
-                    )
-                )
             }
+
+            // 3. 防呆 fallback
+            if (probabilitiesList.isEmpty()) {
+                candidateChoices.forEachIndexed { index, optionName ->
+                    val prob = if (index == 0) 0.65f else (0.35f / (candidateChoices.size - 1).coerceAtLeast(1))
+                    probabilitiesList.add(DecisionChoiceProbability(optionName, prob))
+                }
+            }
+
+            val sorted = probabilitiesList.sortedByDescending { it.probability }
+            val best = sorted.firstOrNull()?.actionText ?: candidateChoices.first()
+
+            Result.success(
+                AIDecisionResult(
+                    recommendedAction = best,
+                    optionsProbability = sorted,
+                    explanationNote = "vLLM D3 官方雲端 API (d3-flash) 決策推論"
+                )
+            )
         } catch (e: Exception) {
+            recordDebugLog(
+                title = "出牌決策 (連線異常中斷)",
+                endpoint = "$baseUrl/v1/systemone",
+                model = modelName,
+                httpCode = null,
+                latencyMs = 0,
+                requestJson = "{}",
+                responseJson = "",
+                isSuccess = false,
+                errorMessage = e.localizedMessage ?: e.message
+            )
             Result.failure(e)
         }
     }
@@ -402,23 +515,60 @@ class VllmApiClient {
                 requestBuilder.addHeader("X-API-Key", trimmedKey)
             }
 
-            client.newCall(requestBuilder.build()).execute().use { response ->
-                if (!response.isSuccessful) {
-                    return@withContext Result.success(true) // 離線容錯
-                }
-                val body = response.body?.string() ?: ""
-                val json = gson.fromJson(body, JsonObject::class.java)
-                val choice = json.getAsJsonObject("answers")
-                    ?.getAsJsonObject("tile_count")
-                    ?.get("choice")?.asString ?: "match"
-
-                if (choice == "match") {
-                    Result.success(true)
-                } else {
-                    Result.failure(Exception("手牌張數不符：AI 識別圖中不是 $expectedCount 張牌"))
+            val debugPayload = payload.deepCopy().apply {
+                if (has("images")) {
+                    val imgArr = JsonArray().apply {
+                        add("data:image/jpeg;base64,... (已截斷，圖片長度: ${dataUrl.length} 字元)")
+                    }
+                    add("images", imgArr)
                 }
             }
+
+            val startTime = System.currentTimeMillis()
+            val response = client.newCall(requestBuilder.build()).execute()
+            val latency = (System.currentTimeMillis() - startTime).coerceAtLeast(1)
+            val code = response.code
+            val body = response.body?.string() ?: ""
+            response.close()
+
+            recordDebugLog(
+                title = "拍照辨識：手牌張數驗證 (目標 $expectedCount 張)",
+                endpoint = endpoint,
+                model = actualModel,
+                httpCode = code,
+                latencyMs = latency,
+                requestJson = debugPayload.toString(),
+                responseJson = body,
+                isSuccess = (code in 200..299),
+                errorMessage = if (code !in 200..299) body else null
+            )
+
+            if (code !in 200..299) {
+                return@withContext Result.success(true) // 離線容錯
+            }
+
+            val json = gson.fromJson(body, JsonObject::class.java)
+            val choice = json.getAsJsonObject("answers")
+                ?.getAsJsonObject("tile_count")
+                ?.get("choice")?.asString ?: "match"
+
+            if (choice == "match") {
+                Result.success(true)
+            } else {
+                Result.failure(Exception("手牌張數不符：AI 識別圖中不是 $expectedCount 張牌"))
+            }
         } catch (e: Exception) {
+            recordDebugLog(
+                title = "拍照辨識：手牌張數驗證 (連線異常)",
+                endpoint = "$baseUrl/v1/systemone",
+                model = modelName,
+                httpCode = null,
+                latencyMs = 0,
+                requestJson = "{}",
+                responseJson = "",
+                isSuccess = false,
+                errorMessage = e.localizedMessage ?: e.message
+            )
             Result.success(true)
         }
     }
@@ -475,18 +625,43 @@ class VllmApiClient {
                 requestBuilder.addHeader("X-API-Key", trimmedKey)
             }
 
-            client.newCall(requestBuilder.build()).execute().use { response ->
-                if (response.isSuccessful) {
-                    val body = response.body?.string() ?: ""
-                    val json = gson.fromJson(body, JsonObject::class.java)
-                    val choice = json.getAsJsonObject("answers")
-                        ?.getAsJsonObject("tile_pos_$position")
-                        ?.get("choice")?.asString
-
-                    val tile = choice?.let { MahjongTile.findById(it) }
-                    if (tile != null) {
-                        return@withContext Result.success(tile)
+            val debugPayload = payload.deepCopy().apply {
+                if (has("images")) {
+                    val imgArr = JsonArray().apply {
+                        add("data:image/jpeg;base64,... (已截斷，圖片長度: ${dataUrl.length} 字元)")
                     }
+                    add("images", imgArr)
+                }
+            }
+
+            val startTime = System.currentTimeMillis()
+            val response = client.newCall(requestBuilder.build()).execute()
+            val latency = (System.currentTimeMillis() - startTime).coerceAtLeast(1)
+            val code = response.code
+            val body = response.body?.string() ?: ""
+            response.close()
+
+            recordDebugLog(
+                title = "單張牌辨識 (第 $position/$total 張)",
+                endpoint = endpoint,
+                model = actualModel,
+                httpCode = code,
+                latencyMs = latency,
+                requestJson = debugPayload.toString(),
+                responseJson = body,
+                isSuccess = (code in 200..299),
+                errorMessage = if (code !in 200..299) body else null
+            )
+
+            if (code in 200..299) {
+                val json = gson.fromJson(body, JsonObject::class.java)
+                val choice = json.getAsJsonObject("answers")
+                    ?.getAsJsonObject("tile_pos_$position")
+                    ?.get("choice")?.asString
+
+                val tile = choice?.let { MahjongTile.findById(it) }
+                if (tile != null) {
+                    return@withContext Result.success(tile)
                 }
             }
 
@@ -494,6 +669,17 @@ class VllmApiClient {
             val fallback = getFallbackTile(position, total)
             Result.success(fallback)
         } catch (e: Exception) {
+            recordDebugLog(
+                title = "單張牌辨識 (第 $position/$total 張 - 異常)",
+                endpoint = "$baseUrl/v1/systemone",
+                model = modelName,
+                httpCode = null,
+                latencyMs = 0,
+                requestJson = "{}",
+                responseJson = "",
+                isSuccess = false,
+                errorMessage = e.localizedMessage ?: e.message
+            )
             val fallback = getFallbackTile(position, total)
             Result.success(fallback)
         }

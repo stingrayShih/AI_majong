@@ -40,6 +40,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.aimajong.app.data.SettingsRepository
 import com.aimajong.app.model.*
 import com.aimajong.app.network.VllmApiClient
+import com.aimajong.app.ui.components.DebugInspectorDialog
 import com.aimajong.app.ui.components.MahjongTileView
 import com.aimajong.app.ui.components.TilePickerDialog
 import com.aimajong.app.ui.theme.*
@@ -83,6 +84,7 @@ fun PhotoScanScreen(
     var recognizedTiles by remember { mutableStateOf<List<MahjongTile>?>(null) }
     var showTilePickerForAdd by remember { mutableStateOf(false) }
     var editingTileIndex by remember { mutableStateOf<Int?>(null) }
+    var showDebugDialog by remember { mutableStateOf(false) }
 
     // 相機 ImageCapture 實例
     val imageCapture = remember {
@@ -174,6 +176,26 @@ fun PhotoScanScreen(
                         }
                     }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = TextLight)
+                    }
+                },
+                actions = {
+                    if (settingsRepo.isDebugMode) {
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = AccentGold.copy(alpha = 0.15f),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, AccentGold.copy(alpha = 0.8f)),
+                            modifier = Modifier
+                                .padding(end = 8.dp)
+                                .clickable { showDebugDialog = true }
+                        ) {
+                            Text(
+                                text = "🪲 報文",
+                                color = AccentGold,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            )
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MahjongGreenDark)
@@ -614,6 +636,16 @@ fun PhotoScanScreen(
                 }
                 showTilePickerForAdd = false
             }
+        )
+    }
+
+    if (showDebugDialog) {
+        val latestLog by apiClient.latestDebugLog.collectAsState()
+        val logHistory by apiClient.debugLogHistory.collectAsState()
+        DebugInspectorDialog(
+            initialLog = latestLog,
+            logHistory = logHistory,
+            onDismiss = { showDebugDialog = false }
         )
     }
 }
