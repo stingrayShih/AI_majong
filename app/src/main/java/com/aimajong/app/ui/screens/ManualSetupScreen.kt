@@ -38,7 +38,7 @@ fun ManualSetupScreen(
     val targetTileCount = if (isSelfDealer) 17 else 16
 
     // 起手手牌絕不能包含花牌，花牌不提供選取
-    val availableSuits = remember { TileSuit.values().filter { it != TileSuit.FLOWER } }
+    val availableSuits = remember { TileSuit.values().toList() }
     var activeSuit by remember { mutableStateOf(TileSuit.HONOR) } // 預設先開字牌
     val suitTiles = remember(activeSuit) { MahjongTile.getTilesBySuit(activeSuit) }
 

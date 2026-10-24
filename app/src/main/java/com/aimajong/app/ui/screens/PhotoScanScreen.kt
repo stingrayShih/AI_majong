@@ -886,7 +886,6 @@ fun PhotoScanScreen(
         TilePickerDialog(
             title = "替換牌面 (目前: ${currentTile?.name ?: ""})",
             initialSuit = TileSuit.HONOR,
-            allowFlower = false,
             getRemainingCount = { tile ->
                 val used = recognizedTiles?.count { it.id == tile.id } ?: 0
                 MahjongTile.getMaxCount(tile) - used
@@ -908,7 +907,6 @@ fun PhotoScanScreen(
         TilePickerDialog(
             title = "選擇要補充的手牌",
             initialSuit = TileSuit.HONOR,
-            allowFlower = false,
             getRemainingCount = { tile ->
                 val used = recognizedTiles?.count { it.id == tile.id } ?: 0
                 MahjongTile.getMaxCount(tile) - used

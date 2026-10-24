@@ -46,7 +46,6 @@ fun MahjongTileView(
             "fa" -> TileTiaoGreen
             else -> TileHonorBlack
         }
-        TileSuit.FLOWER -> TileFlowerPurple
     }
 
     val borderColor = if (isSelected) AccentGold else TileBorder

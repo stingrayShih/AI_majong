@@ -49,13 +49,11 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
      */
     fun startNewGame(initialHand: List<MahjongTile> = emptyList(), dealerSeat: PlayerSeat = PlayerSeat.SELF) {
         historySnapshots.clear()
-        val cleanHand = initialHand.filter { !it.isFlower }
-        val initialFlowers = initialHand.filter { it.isFlower }
 
         _gameState.value = GameState(
             dealerSeat = dealerSeat,
-            handTiles = cleanHand.sorted(),
-            flowers = initialFlowers,
+            handTiles = initialHand.sorted(),
+            flowers = emptyList(),
             currentTurn = 1,
             currentTurnPlayer = dealerSeat,
             phase = TurnPhase.AWAITING_DISCARD,
@@ -83,38 +81,22 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
 
         saveSnapshot()
 
-        if (tile.isFlower) {
-            _gameState.update { s ->
-                val record = GameActionRecord(
-                    turnNumber = s.currentTurn,
-                    seat = PlayerSeat.SELF,
-                    actionType = ActionType.FLOWER,
-                    tile = tile
-                )
-                s.copy(
-                    flowers = s.flowers + tile,
-                    history = s.history + record,
-                    phase = TurnPhase.AWAITING_DRAW
-                )
-            }
-        } else {
-            _gameState.update { s ->
-                val newHand = (s.handTiles + tile).sorted()
-                val record = GameActionRecord(
-                    turnNumber = s.currentTurn,
-                    seat = PlayerSeat.SELF,
-                    actionType = ActionType.DRAW,
-                    tile = tile
-                )
-                s.copy(
-                    handTiles = newHand,
-                    phase = TurnPhase.AWAITING_DISCARD,
-                    justMeldedThisTurn = false,
-                    history = s.history + record
-                )
-            }
-            triggerAIDecision()
+        _gameState.update { s ->
+            val newHand = (s.handTiles + tile).sorted()
+            val record = GameActionRecord(
+                turnNumber = s.currentTurn,
+                seat = PlayerSeat.SELF,
+                actionType = ActionType.DRAW,
+                tile = tile
+            )
+            s.copy(
+                handTiles = newHand,
+                phase = TurnPhase.AWAITING_DISCARD,
+                justMeldedThisTurn = false,
+                history = s.history + record
+            )
         }
+        triggerAIDecision()
     }
 
     /**
@@ -123,7 +105,6 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
     fun onDiscardTile(seat: PlayerSeat, tile: MahjongTile) {
         val current = _gameState.value
         if (current.isGameOver) return
-        if (tile.isFlower) return
         if (current.currentTurnPlayer != seat || current.phase != TurnPhase.AWAITING_DISCARD) return
         if (seat != PlayerSeat.SELF && current.remainingCount(tile) <= 0) return
 
@@ -191,7 +172,6 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
     fun onMeldAction(seat: PlayerSeat, meld: Meld) {
         val current = _gameState.value
         if (current.phase != TurnPhase.AWAITING_CALL_RESPONSE) return
-        if (meld.triggerTile?.isFlower == true) return
         if (current.lastDiscard?.first == seat) return
 
         saveSnapshot()
@@ -259,7 +239,6 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
      */
     fun onAnGang(tile: MahjongTile) {
         val current = _gameState.value
-        if (tile.isFlower) return
         if (current.currentTurnPlayer != PlayerSeat.SELF || current.phase != TurnPhase.AWAITING_DISCARD) return
         if (current.handTiles.count { it.id == tile.id } < 4) return
 
@@ -305,7 +284,6 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
     fun onOtherTurnAction(seat: PlayerSeat, discardedTile: MahjongTile) {
         val current = _gameState.value
         if (current.isGameOver) return
-        if (discardedTile.isFlower) return
         if (current.currentTurnPlayer != seat) return
 
         saveSnapshot()
@@ -406,21 +384,19 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
 
                 val candidateChoices = mutableListOf<String>()
 
-                if (!discardedTile.isFlower) {
-                    if (state.canPeng(discardedTile)) {
-                        candidateChoices.add("碰 ${discardedTile.name}")
-                    }
+                if (state.canPeng(discardedTile)) {
+                    candidateChoices.add("碰 ${discardedTile.name}")
+                }
 
-                    if (fromSeat == PlayerSeat.SHANG_JIA) {
-                        val chiOptions = state.getChiCombinations(discardedTile)
-                        chiOptions.forEach { (t1, t2) ->
-                            candidateChoices.add("吃 [${t1.name}, ${t2.name}]")
-                        }
+                if (fromSeat == PlayerSeat.SHANG_JIA) {
+                    val chiOptions = state.getChiCombinations(discardedTile)
+                    chiOptions.forEach { (t1, t2) ->
+                        candidateChoices.add("吃 [${t1.name}, ${t2.name}]")
                     }
+                }
 
-                    if (state.canMingGang(discardedTile)) {
-                        candidateChoices.add("明槓 ${discardedTile.name}")
-                    }
+                if (state.canMingGang(discardedTile)) {
+                    candidateChoices.add("明槓 ${discardedTile.name}")
                 }
 
                 candidateChoices.add("抓放槍 (榮和)")
@@ -482,8 +458,8 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
 
-                // 手牌中所有非花牌的牌型皆為可打出的候選選項
-                val candidates = hand.filter { !it.isFlower }.distinctBy { it.id }
+                // 手牌中所有牌型皆為可打出的候選選項
+                val candidates = hand.distinctBy { it.id }
                 candidates.forEach { tile ->
                     candidateChoices.add("打出 ${tile.name}")
                 }

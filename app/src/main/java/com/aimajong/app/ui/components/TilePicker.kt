@@ -25,16 +25,12 @@ import com.aimajong.app.ui.theme.MahjongGreenDark
 fun TilePickerDialog(
     title: String = "請選擇牌面",
     initialSuit: TileSuit = TileSuit.HONOR, // 預設優先開啟【字牌】頁面
-    allowFlower: Boolean = false,           // 打牌、吃碰槓一律禁止選擇花牌
     getRemainingCount: ((MahjongTile) -> Int)? = null,
     onDismissRequest: () -> Unit,
     onTileSelected: (MahjongTile) -> Unit
 ) {
     var selectedSuit by remember { mutableStateOf(initialSuit) }
-    val availableSuits = remember(allowFlower) {
-        if (allowFlower) TileSuit.values().toList()
-        else TileSuit.values().filter { it != TileSuit.FLOWER }
-    }
+    val availableSuits = remember { TileSuit.values().toList() }
 
     val tilesForSuit = remember(selectedSuit) {
         MahjongTile.getTilesBySuit(selectedSuit)

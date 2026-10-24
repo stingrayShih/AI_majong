@@ -255,14 +255,20 @@ class VllmApiClient {
             val promptText = buildString {
                 appendLine("【台灣16張麻將 AI 決策請求】")
                 appendLine("莊家：${state.dealerSeat.title} | 目前第 ${state.currentTurn} 巡")
-                appendLine("我的手牌 (${state.concealedHandCount}張): ${state.handTiles.joinToString(" ") { it.name }}")
-                if (state.melds.isNotEmpty()) {
-                    appendLine("我的副露 (吃碰槓): ${state.melds.joinToString(" | ") { m -> "${m.type.label} [${m.tiles.joinToString(" ") { it.name }}]" }}")
+                val totalHand = state.concealedHandCount + (state.melds.size * 3)
+                if (state.phase == TurnPhase.AWAITING_DISCARD) {
+                    appendLine("我的門前手牌 (${state.concealedHandCount}張): ${state.handTiles.joinToString(" ") { it.name }} (加副露共 ${totalHand}張，當前為摸牌後出牌階段)")
+                } else {
+                    appendLine("我的門前手牌 (${state.concealedHandCount}張): ${state.handTiles.joinToString(" ") { it.name }} (加副露共 ${totalHand}張，當前等待他家打牌反應)")
                 }
-                if (state.flowers.isNotEmpty()) {
-                    appendLine("我的花牌: ${state.flowers.joinToString(" ") { it.name }}")
-                }
-                appendLine("--- 牌河 (棄牌) ---")
+
+                appendLine("--- 各家副露 (吃/碰/明槓/暗槓) ---")
+                appendLine("我的副露: ${formatMelds(state.melds, isSelf = true)}")
+                appendLine("上家副露: ${formatMelds(state.otherMelds[PlayerSeat.SHANG_JIA] ?: emptyList(), isSelf = false)}")
+                appendLine("對家副露: ${formatMelds(state.otherMelds[PlayerSeat.DUI_JIA] ?: emptyList(), isSelf = false)}")
+                appendLine("下家副露: ${formatMelds(state.otherMelds[PlayerSeat.XIA_JIA] ?: emptyList(), isSelf = false)}")
+
+                appendLine("--- 各家牌河 (捨牌) ---")
                 appendLine("上家打牌: ${state.discards[PlayerSeat.SHANG_JIA]?.joinToString(" ") { it.name } ?: "無"}")
                 appendLine("對家打牌: ${state.discards[PlayerSeat.DUI_JIA]?.joinToString(" ") { it.name } ?: "無"}")
                 appendLine("下家打牌: ${state.discards[PlayerSeat.XIA_JIA]?.joinToString(" ") { it.name } ?: "無"}")
@@ -286,7 +292,7 @@ class VllmApiClient {
 
             val questionObject = JsonObject().apply {
                 addProperty("type", "choice")
-                addProperty("instructions", "在當前台灣16張麻將局勢下，最推薦採取的打牌或鳴牌決策是什麼？")
+                addProperty("instructions", "在當前台灣16張麻將局勢下，請綜合考量進張速度、向聽數與各家牌河/副露防守，最推薦採取的打牌或鳴牌決策是什麼？")
                 add("criteria", criteriaObject)
             }
 
@@ -414,6 +420,22 @@ class VllmApiClient {
                 errorMessage = e.localizedMessage ?: e.message
             )
             Result.failure(e)
+        }
+    }
+
+    private fun formatMelds(melds: List<Meld>, isSelf: Boolean): String {
+        if (melds.isEmpty()) return "無副露 (門清)"
+        return melds.joinToString(" | ") { m ->
+            if (m.type == ActionType.GANG_AN) {
+                if (isSelf) {
+                    val tileName = m.tiles.firstOrNull()?.name ?: "暗牌"
+                    "暗槓 [$tileName 4張]"
+                } else {
+                    "暗槓 [暗牌未公開]"
+                }
+            } else {
+                "${m.type.label} [${m.tiles.joinToString(" ") { it.name }}]"
+            }
         }
     }
 

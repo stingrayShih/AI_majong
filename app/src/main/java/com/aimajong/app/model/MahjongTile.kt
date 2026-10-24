@@ -7,8 +7,7 @@ enum class TileSuit(val displayName: String) {
     WAN("萬子"),
     TONG("筒子"),
     TIAO("條子"),
-    HONOR("字牌"),
-    FLOWER("花牌")
+    HONOR("字牌")
 }
 
 /**
@@ -70,34 +69,6 @@ data class MahjongTile(
                 list.add(MahjongTile(dragonIds[i], TileSuit.HONOR, i + 5, dragonNames[i], dragonCodes[i]))
             }
 
-            // 5. 花牌 (春夏秋冬 + 梅蘭竹菊)
-            val flower1Names = listOf("春", "夏", "秋", "冬")
-            for (i in 0..3) {
-                list.add(
-                    MahjongTile(
-                        id = "flower_season_${i + 1}",
-                        suit = TileSuit.FLOWER,
-                        rank = i + 1,
-                        name = flower1Names[i],
-                        shortCode = "H${i + 1}",
-                        isFlower = true
-                    )
-                )
-            }
-            val flower2Names = listOf("梅", "蘭", "竹", "菊")
-            for (i in 0..3) {
-                list.add(
-                    MahjongTile(
-                        id = "flower_plant_${i + 1}",
-                        suit = TileSuit.FLOWER,
-                        rank = i + 5,
-                        name = flower2Names[i],
-                        shortCode = "H${i + 5}",
-                        isFlower = true
-                    )
-                )
-            }
-
             list
         }
 
@@ -151,8 +122,8 @@ data class MahjongTile(
         }
 
         /**
-         * 取得某張牌在全副牌中的上限總數（普通牌 4 張，花牌 1 張）
+         * 取得某張牌在全副牌中的上限總數（正規牌每種各 4 張）
          */
-        fun getMaxCount(tile: MahjongTile): Int = if (tile.isFlower) 1 else 4
+        fun getMaxCount(tile: MahjongTile): Int = 4
     }
 }

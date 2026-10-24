@@ -146,14 +146,6 @@ fun GameScreen(
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold
                         )
-                        if (state.flowers.isNotEmpty()) {
-                            Text(
-                                "我的花牌: ${state.flowers.joinToString(" ") { it.name }}",
-                                color = Color(0xFFCE93D8),
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
                     }
                     Spacer(modifier = Modifier.height(4.dp))
 
@@ -324,8 +316,6 @@ fun GameScreen(
                             onClick = {
                                 if (state.isGameOver) {
                                     Toast.makeText(context, "牌局已結束！", Toast.LENGTH_SHORT).show()
-                                } else if (tile.isFlower) {
-                                    Toast.makeText(context, "花牌不能打出！", Toast.LENGTH_SHORT).show()
                                 } else if (state.canSelfDiscard) {
                                     viewModel.onDiscardTile(PlayerSeat.SELF, tile)
                                 } else {
@@ -362,9 +352,8 @@ fun GameScreen(
     // 摸牌選擇器
     if (showTilePickerForDraw) {
         TilePickerDialog(
-            title = "選擇摸到的牌 (若為花牌將自動補花)",
+            title = "選擇摸到的牌",
             initialSuit = TileSuit.HONOR,
-            allowFlower = true,
             getRemainingCount = { tile -> state.remainingCount(tile) },
             onDismissRequest = { showTilePickerForDraw = false },
             onTileSelected = { tile -> viewModel.onDrawTile(tile) }
@@ -377,7 +366,6 @@ fun GameScreen(
         TilePickerDialog(
             title = "選擇 ${currentSeat.title} 打出的牌",
             initialSuit = TileSuit.HONOR,
-            allowFlower = false,
             getRemainingCount = { tile -> state.remainingCount(tile) },
             onDismissRequest = { showTilePickerForOtherTurn = false },
             onTileSelected = { tile -> viewModel.onOtherTurnAction(currentSeat, tile) }
@@ -757,9 +745,9 @@ fun SelfMeldDialog(
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                if (targetTile == null || lastDiscard.first == PlayerSeat.SELF || targetTile.isFlower) {
+                if (targetTile == null || lastDiscard.first == PlayerSeat.SELF) {
                     Text(
-                        if (targetTile?.isFlower == true) "花牌不能吃碰槓！" else "自己打出的牌不能自己吃碰槓！",
+                        "自己打出的牌不能自己吃碰槓！",
                         color = Color.Red,
                         fontSize = 13.sp
                     )

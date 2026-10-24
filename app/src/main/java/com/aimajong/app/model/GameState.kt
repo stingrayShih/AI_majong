@@ -58,7 +58,6 @@ data class GameState(
     fun countVisibleTile(tile: MahjongTile): Int {
         var count = 0
         count += handTiles.count { it.id == tile.id }
-        count += flowers.count { it.id == tile.id }
         discards.values.forEach { river ->
             count += river.count { it.id == tile.id }
         }
@@ -79,27 +78,23 @@ data class GameState(
     }
 
     fun canPeng(targetTile: MahjongTile): Boolean {
-        if (targetTile.isFlower) return false
         if (lastDiscard?.first == PlayerSeat.SELF) return false
         return handTiles.count { it.id == targetTile.id } >= 2
     }
 
     fun canMingGang(targetTile: MahjongTile): Boolean {
-        if (targetTile.isFlower) return false
         if (lastDiscard?.first == PlayerSeat.SELF) return false
         return handTiles.count { it.id == targetTile.id } >= 3
     }
 
     fun getAnGangOptions(): List<MahjongTile> {
         return handTiles
-            .filter { !it.isFlower }
             .groupBy { it.id }
             .filter { it.value.size >= 4 }
             .map { it.value.first() }
     }
 
     fun getChiCombinations(targetTile: MahjongTile): List<Pair<MahjongTile, MahjongTile>> {
-        if (targetTile.isFlower) return emptyList()
         if (lastDiscard?.first != PlayerSeat.SHANG_JIA) return emptyList()
 
         if (targetTile.suit != TileSuit.WAN &&
