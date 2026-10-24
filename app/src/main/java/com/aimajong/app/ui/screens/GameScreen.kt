@@ -7,6 +7,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -119,8 +121,9 @@ fun GameScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 12.dp, vertical = 6.dp),
-            verticalArrangement = Arrangement.SpaceBetween
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             TurnStatusBanner(state = state)
 
@@ -333,6 +336,7 @@ fun GameScreen(
                     showHuDialog = true
                 }
             )
+            Spacer(modifier = Modifier.height(24.dp))
         }
     }
 
@@ -515,27 +519,30 @@ fun DynamicActionBar(
                     if (!isMyDiscard) {
                         Button(
                             onClick = onSelfMeldClicked,
-                            modifier = Modifier.weight(1.2f),
+                            modifier = Modifier.weight(1.2f).heightIn(min = 44.dp),
+                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = AccentGold)
                         ) {
-                            Text("我 吃/碰/槓", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                            Text("我 吃/碰/槓", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 13.sp, textAlign = TextAlign.Center)
                         }
                     }
 
                     Button(
                         onClick = onOtherMeldClicked,
-                        modifier = Modifier.weight(1.2f),
+                        modifier = Modifier.weight(1.2f).heightIn(min = 44.dp),
+                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = CardBackground)
                     ) {
-                        Text("他家吃碰槓", color = TextLight, fontSize = 13.sp)
+                        Text("他家吃碰槓", color = TextLight, fontSize = 13.sp, textAlign = TextAlign.Center)
                     }
 
                     Button(
                         onClick = onFangQiangClicked,
-                        modifier = Modifier.weight(1.1f),
+                        modifier = Modifier.weight(1.1f).heightIn(min = 44.dp),
+                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = TileWanRed)
                     ) {
-                        Text("抓放槍胡", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        Text("抓放槍胡", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp, textAlign = TextAlign.Center)
                     }
                 }
 
@@ -543,7 +550,8 @@ fun DynamicActionBar(
                     onClick = onPassCallClicked,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(44.dp),
+                        .heightIn(min = 44.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = Color(0xFFFFF9C4),
                         contentColor = Color(0xFF1B5E20)
@@ -554,7 +562,8 @@ fun DynamicActionBar(
                     Text(
                         "⏩ 過 (無人鳴牌，換下一家摸牌)",
                         fontWeight = FontWeight.Bold,
-                        fontSize = 14.sp
+                        fontSize = 14.sp,
+                        textAlign = TextAlign.Center
                     )
                 }
             }
@@ -567,17 +576,19 @@ fun DynamicActionBar(
             ) {
                 Button(
                     onClick = onDrawClicked,
-                    modifier = Modifier.weight(2f).height(48.dp),
+                    modifier = Modifier.weight(2f).heightIn(min = 48.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = AccentGold)
                 ) {
-                    Text("摸牌", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Text("摸牌", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 16.sp, textAlign = TextAlign.Center)
                 }
                 Button(
                     onClick = onZiMoClicked,
-                    modifier = Modifier.weight(1.2f).height(48.dp),
+                    modifier = Modifier.weight(1.2f).heightIn(min = 48.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = TileWanRed)
                 ) {
-                    Text("自摸胡牌", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Text("自摸胡牌", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp, textAlign = TextAlign.Center)
                 }
             }
         }
@@ -593,20 +604,22 @@ fun DynamicActionBar(
                 if (anGangList.isNotEmpty()) {
                     Button(
                         onClick = onAnGangClicked,
-                        modifier = Modifier.weight(1f).height(46.dp),
+                        modifier = Modifier.weight(1f).heightIn(min = 46.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6A1B9A))
                     ) {
-                        Text("暗槓 (${anGangList.first().name})", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        Text("暗槓 (${anGangList.first().name})", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp, textAlign = TextAlign.Center)
                     }
                 }
 
                 if (canHuNow) {
                     Button(
                         onClick = onZiMoClicked,
-                        modifier = Modifier.weight(1f).height(46.dp),
+                        modifier = Modifier.weight(1f).heightIn(min = 46.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = TileWanRed)
                     ) {
-                        Text("自摸胡牌", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        Text("自摸胡牌", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp, textAlign = TextAlign.Center)
                     }
                 }
             }
@@ -622,7 +635,8 @@ fun DynamicActionBar(
             ) {
                 Button(
                     onClick = onOtherTurnClicked,
-                    modifier = Modifier.weight(2f).height(48.dp),
+                    modifier = Modifier.weight(2f).heightIn(min = 48.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = AccentGold)
                 ) {
                     Text("記錄【${currentSeat.title}】摸打出牌", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 14.sp)

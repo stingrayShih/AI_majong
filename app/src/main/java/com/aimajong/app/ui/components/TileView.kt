@@ -12,6 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -29,6 +30,13 @@ fun MahjongTileView(
     height: Dp = 60.dp,
     onClick: (() -> Unit)? = null
 ) {
+    val density = LocalDensity.current
+    // 關鍵修復：麻將牌文字需鎖定牌面比例，避免系統特大字體導致字體暴衝溢出牌面破壞排版
+    val fontScale = density.fontScale.coerceAtLeast(1.0f)
+    val doubleCharFontSize = (if (height < 50.dp) 11.sp else 14.sp) / fontScale
+    val doubleCharLineHeight = (if (height < 50.dp) 12.sp else 15.sp) / fontScale
+    val singleCharFontSize = (if (height < 50.dp) 13.sp else 17.sp) / fontScale
+
     val textColor = when (tile.suit) {
         TileSuit.WAN -> TileWanRed
         TileSuit.TONG -> TileTongBlue
@@ -65,22 +73,22 @@ fun MahjongTileView(
                     text = tile.name.substring(0, 1),
                     color = textColor,
                     fontWeight = FontWeight.Bold,
-                    fontSize = if (height < 50.dp) 12.sp else 15.sp,
-                    lineHeight = if (height < 50.dp) 13.sp else 16.sp
+                    fontSize = doubleCharFontSize,
+                    lineHeight = doubleCharLineHeight
                 )
                 Text(
                     text = tile.name.substring(1),
                     color = textColor,
                     fontWeight = FontWeight.Bold,
-                    fontSize = if (height < 50.dp) 12.sp else 15.sp,
-                    lineHeight = if (height < 50.dp) 13.sp else 16.sp
+                    fontSize = doubleCharFontSize,
+                    lineHeight = doubleCharLineHeight
                 )
             } else {
                 Text(
                     text = tile.name,
                     color = textColor,
                     fontWeight = FontWeight.Bold,
-                    fontSize = if (height < 50.dp) 14.sp else 18.sp
+                    fontSize = singleCharFontSize
                 )
             }
         }

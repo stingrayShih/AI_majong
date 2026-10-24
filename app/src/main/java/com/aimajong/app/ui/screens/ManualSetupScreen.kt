@@ -5,6 +5,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -83,8 +85,9 @@ fun ManualSetupScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.SpaceBetween
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             // 【最上方：已確認莊家資訊卡片】
             Card(
@@ -237,13 +240,14 @@ fun ManualSetupScreen(
                 }
             }
 
-            // 開始對局按鈕
+            // 開始對局按鈕 (大字體自動展開高度)
             Button(
                 onClick = { onStartGameWithHand(selectedTiles.toList(), dealerSeat) },
                 enabled = selectedTiles.size == targetTileCount,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(48.dp),
+                    .heightIn(min = 48.dp),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = AccentGold,
                     disabledContainerColor = Color.DarkGray
@@ -258,9 +262,11 @@ fun ManualSetupScreen(
                     },
                     color = if (selectedTiles.size == targetTileCount) Color.Black else Color.Gray,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 15.sp
+                    fontSize = 15.sp,
+                    textAlign = TextAlign.Center
                 )
             }
+            Spacer(modifier = Modifier.height(16.dp))
         }
     }
 }

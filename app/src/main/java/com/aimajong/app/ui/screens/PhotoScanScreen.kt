@@ -339,9 +339,9 @@ fun PhotoScanScreen(
                                         colors = ButtonDefaults.outlinedButtonColors(contentColor = TextLight),
                                         border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF388E3C)),
                                         shape = RoundedCornerShape(8.dp),
-                                        modifier = Modifier.weight(1f).height(36.dp),
+                                        modifier = Modifier.weight(1f).heightIn(min = 34.dp),
                                         contentPadding = PaddingValues(0.dp)
-                                    ) { Text("⬅ 左", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                                    ) { Text("⬅ 左", fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false) }
 
                                     // 右移
                                     OutlinedButton(
@@ -354,9 +354,9 @@ fun PhotoScanScreen(
                                         colors = ButtonDefaults.outlinedButtonColors(contentColor = TextLight),
                                         border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF388E3C)),
                                         shape = RoundedCornerShape(8.dp),
-                                        modifier = Modifier.weight(1f).height(36.dp),
+                                        modifier = Modifier.weight(1f).heightIn(min = 34.dp),
                                         contentPadding = PaddingValues(0.dp)
-                                    ) { Text("右 ➡", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                                    ) { Text("右 ➡", fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false) }
 
                                     // 上移
                                     OutlinedButton(
@@ -369,9 +369,9 @@ fun PhotoScanScreen(
                                         colors = ButtonDefaults.outlinedButtonColors(contentColor = TextLight),
                                         border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF388E3C)),
                                         shape = RoundedCornerShape(8.dp),
-                                        modifier = Modifier.weight(1f).height(36.dp),
+                                        modifier = Modifier.weight(1f).heightIn(min = 34.dp),
                                         contentPadding = PaddingValues(0.dp)
-                                    ) { Text("⬆ 上", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                                    ) { Text("⬆ 上", fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false) }
 
                                     // 下移
                                     OutlinedButton(
@@ -384,9 +384,9 @@ fun PhotoScanScreen(
                                         colors = ButtonDefaults.outlinedButtonColors(contentColor = TextLight),
                                         border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF388E3C)),
                                         shape = RoundedCornerShape(8.dp),
-                                        modifier = Modifier.weight(1f).height(36.dp),
+                                        modifier = Modifier.weight(1f).heightIn(min = 34.dp),
                                         contentPadding = PaddingValues(0.dp)
-                                    ) { Text("下 ⬇", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                                    ) { Text("下 ⬇", fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false) }
 
                                     // 變寬
                                     OutlinedButton(
@@ -398,9 +398,9 @@ fun PhotoScanScreen(
                                         colors = ButtonDefaults.outlinedButtonColors(contentColor = TextLight),
                                         border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF388E3C)),
                                         shape = RoundedCornerShape(8.dp),
-                                        modifier = Modifier.weight(1f).height(36.dp),
+                                        modifier = Modifier.weight(1f).heightIn(min = 34.dp),
                                         contentPadding = PaddingValues(0.dp)
-                                    ) { Text("↔ 寬", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                                    ) { Text("↔ 寬", fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false) }
                                 }
 
                                 Row(
@@ -414,7 +414,8 @@ fun PhotoScanScreen(
                                         colors = ButtonDefaults.outlinedButtonColors(contentColor = TextLight),
                                         border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.5f)),
                                         shape = RoundedCornerShape(10.dp),
-                                        modifier = Modifier.weight(1f).height(44.dp)
+                                        modifier = Modifier.weight(1f).heightIn(min = 42.dp),
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
                                     ) {
                                         Icon(Icons.Default.Refresh, contentDescription = null, tint = AccentGold, modifier = Modifier.size(16.dp))
                                         Spacer(modifier = Modifier.width(4.dp))
@@ -426,7 +427,8 @@ fun PhotoScanScreen(
                                         colors = ButtonDefaults.outlinedButtonColors(contentColor = TextLight),
                                         border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.5f)),
                                         shape = RoundedCornerShape(10.dp),
-                                        modifier = Modifier.weight(1f).height(44.dp)
+                                        modifier = Modifier.weight(1f).heightIn(min = 42.dp),
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
                                     ) {
                                         Icon(Icons.Default.CameraAlt, contentDescription = null, tint = Color.LightGray, modifier = Modifier.size(16.dp))
                                         Spacer(modifier = Modifier.width(4.dp))
@@ -485,7 +487,10 @@ fun PhotoScanScreen(
                                     enabled = !isProcessing,
                                     colors = ButtonDefaults.buttonColors(containerColor = AccentGold, contentColor = Color.Black),
                                     shape = RoundedCornerShape(12.dp),
-                                    modifier = Modifier.fillMaxWidth().height(48.dp)
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .heightIn(min = 48.dp),
+                                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp)
                                 ) {
                                     Icon(Icons.Default.ContentCut, contentDescription = null, tint = Color.Black)
                                     Spacer(modifier = Modifier.width(6.dp))
@@ -665,14 +670,15 @@ fun PhotoScanScreen(
                                     colors = ButtonDefaults.outlinedButtonColors(contentColor = TextLight),
                                     border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.4f)),
                                     shape = RoundedCornerShape(12.dp),
-                                    modifier = Modifier.weight(1f).height(48.dp)
+                                    modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp)
                                 ) {
                                     Icon(Icons.Default.PhotoLibrary, contentDescription = null, tint = AccentGold, modifier = Modifier.size(18.dp))
-                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
                                     Text("相簿選取", fontSize = 13.sp)
                                 }
 
-                                Spacer(modifier = Modifier.width(12.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
 
                                 // 快門按鈕
                                 Button(
@@ -705,14 +711,15 @@ fun PhotoScanScreen(
                                     },
                                     colors = ButtonDefaults.buttonColors(containerColor = AccentGold, contentColor = Color.Black),
                                     shape = RoundedCornerShape(12.dp),
-                                    modifier = Modifier.weight(1.3f).height(48.dp)
+                                    modifier = Modifier.weight(1.3f).heightIn(min = 48.dp),
+                                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp)
                                 ) {
                                     Icon(Icons.Default.CameraAlt, contentDescription = null, tint = Color.Black)
-                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
                                     Text("拍攝辨識", fontWeight = FontWeight.Bold, fontSize = 14.sp)
                                 }
 
-                                Spacer(modifier = Modifier.width(12.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
 
                                 // 離線/快速測試按鈕
                                 OutlinedButton(
@@ -722,7 +729,8 @@ fun PhotoScanScreen(
                                     colors = ButtonDefaults.outlinedButtonColors(contentColor = TextLight),
                                     border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.4f)),
                                     shape = RoundedCornerShape(12.dp),
-                                    modifier = Modifier.weight(1f).height(48.dp)
+                                    modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp)
                                 ) {
                                     Icon(Icons.Default.Bolt, contentDescription = null, tint = AccentGold, modifier = Modifier.size(18.dp))
                                     Spacer(modifier = Modifier.width(4.dp))
@@ -838,7 +846,8 @@ fun PhotoScanScreen(
                             shape = RoundedCornerShape(12.dp),
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(50.dp)
+                                .heightIn(min = 48.dp),
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp)
                         ) {
                             Icon(Icons.Default.Check, contentDescription = null, tint = Color.Black)
                             Spacer(modifier = Modifier.width(8.dp))
@@ -846,7 +855,8 @@ fun PhotoScanScreen(
                                 "確認手牌並開始對局 (${dealerSeat.title}當莊)",
                                 color = if (isCountValid) Color.Black else Color.LightGray,
                                 fontWeight = FontWeight.Bold,
-                                fontSize = 15.sp
+                                fontSize = 15.sp,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
                             )
                         }
 
@@ -857,7 +867,8 @@ fun PhotoScanScreen(
                             shape = RoundedCornerShape(12.dp),
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(44.dp)
+                                .heightIn(min = 44.dp),
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
                         ) {
                             Icon(Icons.Default.Refresh, contentDescription = null, tint = TextLight)
                             Spacer(modifier = Modifier.width(6.dp))
