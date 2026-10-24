@@ -38,8 +38,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.aimajong.app.data.SettingsRepository
-import com.aimajong.app.model.MahjongTile
-import com.aimajong.app.model.PlayerSeat
+import com.aimajong.app.model.*
 import com.aimajong.app.network.VllmApiClient
 import com.aimajong.app.ui.components.MahjongTileView
 import com.aimajong.app.ui.components.TilePickerDialog
@@ -565,9 +564,13 @@ fun PhotoScanScreen(
         val currentTile = recognizedTiles?.getOrNull(index)
         TilePickerDialog(
             title = "替換牌面 (目前: ${currentTile?.name ?: ""})",
-            alreadySelectedCount = { tile ->
-                recognizedTiles?.count { it.id == tile.id } ?: 0
+            initialSuit = TileSuit.HONOR,
+            allowFlower = false,
+            getRemainingCount = { tile ->
+                val used = recognizedTiles?.count { it.id == tile.id } ?: 0
+                MahjongTile.getMaxCount(tile) - used
             },
+            onDismissRequest = { editingTileIndex = null },
             onTileSelected = { newTile ->
                 recognizedTiles?.let { list ->
                     val mutable = list.toMutableList()
@@ -575,9 +578,7 @@ fun PhotoScanScreen(
                     recognizedTiles = mutable
                 }
                 editingTileIndex = null
-            },
-            onDismiss = { editingTileIndex = null },
-            allowFlowers = false
+            }
         )
     }
 
@@ -585,17 +586,19 @@ fun PhotoScanScreen(
     if (showTilePickerForAdd) {
         TilePickerDialog(
             title = "選擇要補充的手牌",
-            alreadySelectedCount = { tile ->
-                recognizedTiles?.count { it.id == tile.id } ?: 0
+            initialSuit = TileSuit.HONOR,
+            allowFlower = false,
+            getRemainingCount = { tile ->
+                val used = recognizedTiles?.count { it.id == tile.id } ?: 0
+                MahjongTile.getMaxCount(tile) - used
             },
+            onDismissRequest = { showTilePickerForAdd = false },
             onTileSelected = { newTile ->
                 recognizedTiles?.let { list ->
                     recognizedTiles = list + newTile
                 }
                 showTilePickerForAdd = false
-            },
-            onDismiss = { showTilePickerForAdd = false },
-            allowFlowers = false
+            }
         )
     }
 }
