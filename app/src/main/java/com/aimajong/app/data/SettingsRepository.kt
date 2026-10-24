@@ -19,7 +19,7 @@ class SettingsRepository(context: Context) {
 
         // vLLM Semantic Router 官方雲端 Decision API
         const val DEFAULT_BASE_URL = "https://decision.vllm-sr.ai"
-        const val DEFAULT_MODEL_NAME = "d3"
+        const val DEFAULT_MODEL_NAME = "vllm-sr/d3"
     }
 
     var isDebugMode: Boolean
@@ -37,10 +37,10 @@ class SettingsRepository(context: Context) {
     var modelName: String
         get() {
             val stored = prefs.getString(KEY_MODEL_NAME, null)
-            if (stored == null || stored == "d3-turbo" || stored == "vllm-sr/d3-turbo") {
+            if (stored.isNullOrBlank() || stored == "d3" || stored == "d3-turbo" || stored == "vllm-sr/d3-turbo") {
                 return DEFAULT_MODEL_NAME
             }
-            return stored
+            return if (!stored.startsWith("vllm-sr/")) "vllm-sr/$stored" else stored
         }
         set(value) = prefs.edit().putString(KEY_MODEL_NAME, value.trim()).apply()
 

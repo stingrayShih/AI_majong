@@ -77,14 +77,25 @@ class VllmApiClient {
         .writeTimeout(4, TimeUnit.SECONDS)
         .build()
 
+    fun normalizeModelName(modelName: String, cleanUrl: String = ""): String {
+        val trimmed = modelName.trim()
+        if (trimmed.isEmpty()) return "vllm-sr/d3"
+        return if (!trimmed.startsWith("vllm-sr/")) {
+            "vllm-sr/$trimmed"
+        } else {
+            trimmed
+        }
+    }
+
     /**
      * 完整測試 vLLM Semantic Router 官方雲端 API：
      * 1. 驗證伺服器網路連通與延遲
      * 2. 驗證 API Key 是否通過授權 (HTTP 401/403 攔截)
      * 3. 實際發送 Decision 請求驗證指定模型 (modelName) 是否在線且能正常運作
      */
-    suspend fun testConnection(baseUrl: String, apiKey: String, modelName: String = "d3"): Result<Pair<String, Long>> =
+    suspend fun testConnection(baseUrl: String, apiKey: String, modelName: String = "vllm-sr/d3"): Result<Pair<String, Long>> =
         withContext(Dispatchers.IO) {
+            val actualModel = normalizeModelName(modelName, baseUrl)
             try {
                 var cleanUrl = baseUrl.trim()
                 if (cleanUrl.isEmpty()) {
@@ -101,11 +112,6 @@ class VllmApiClient {
                 }
 
                 val endpoint = "$cleanUrl/v1/systemone"
-                val actualModel = if (!modelName.startsWith("vllm-sr/") && cleanUrl.contains("vllm-sr.ai")) {
-                    "vllm-sr/$modelName"
-                } else {
-                    modelName
-                }
 
                 // 建立一個真實的輕量 System One 決策請求進行金鑰與模型雙重驗證
                 val questionObj = JsonObject().apply {
@@ -243,6 +249,7 @@ class VllmApiClient {
             }
             cleanUrl = cleanUrl.trimEnd('/')
             val endpoint = "$cleanUrl/v1/systemone"
+            val actualModel = normalizeModelName(modelName, cleanUrl)
 
             // 組裝牌局現況提示詞
             val promptText = buildString {
@@ -289,7 +296,7 @@ class VllmApiClient {
 
             // 組裝 vLLM Semantic Router 官方請求 Payload (不含 options 輔助欄位)
             val jsonPayload = JsonObject().apply {
-                addProperty("model", modelName)
+                addProperty("model", actualModel)
                 addProperty("state", promptText)
                 add("questions", questionsWrapper)
             }
@@ -316,7 +323,7 @@ class VllmApiClient {
                 recordDebugLog(
                     title = "出牌決策 (第${state.currentTurn}巡 - 失敗)",
                     endpoint = endpoint,
-                    model = modelName,
+                    model = actualModel,
                     httpCode = code,
                     latencyMs = latency,
                     requestJson = jsonPayload.toString(),
@@ -330,7 +337,7 @@ class VllmApiClient {
             recordDebugLog(
                 title = "出牌決策 (第${state.currentTurn}巡)",
                 endpoint = endpoint,
-                model = modelName,
+                model = actualModel,
                 httpCode = code,
                 latencyMs = latency,
                 requestJson = jsonPayload.toString(),
@@ -390,14 +397,15 @@ class VllmApiClient {
                 AIDecisionResult(
                     recommendedAction = best,
                     optionsProbability = sorted,
-                    explanationNote = "vLLM D3 官方雲端 API ($modelName) 決策推論"
+                    explanationNote = "vLLM D3 官方雲端 API ($actualModel) 決策推論"
                 )
             )
         } catch (e: Exception) {
+            val fallbackModel = normalizeModelName(modelName, baseUrl)
             recordDebugLog(
                 title = "出牌決策 (連線異常中斷)",
                 endpoint = "$baseUrl/v1/systemone",
-                model = modelName,
+                model = fallbackModel,
                 httpCode = null,
                 latencyMs = 0,
                 requestJson = "{}",
@@ -482,6 +490,7 @@ class VllmApiClient {
             }
             cleanUrl = cleanUrl.trimEnd('/')
             val endpoint = "$cleanUrl/v1/systemone"
+            val actualModel = normalizeModelName(modelName, cleanUrl)
 
             val criteria = JsonObject().apply {
                 addProperty("match", "剛好有 $expectedCount 張牌")
@@ -558,10 +567,11 @@ class VllmApiClient {
                 Result.failure(Exception("手牌張數不符：AI 識別圖中不是 $expectedCount 張牌"))
             }
         } catch (e: Exception) {
+            val fallbackModel = normalizeModelName(modelName, baseUrl)
             recordDebugLog(
                 title = "拍照辨識：手牌張數驗證 (連線異常)",
                 endpoint = "$baseUrl/v1/systemone",
-                model = modelName,
+                model = fallbackModel,
                 httpCode = null,
                 latencyMs = 0,
                 requestJson = "{}",
@@ -592,6 +602,7 @@ class VllmApiClient {
             }
             cleanUrl = cleanUrl.trimEnd('/')
             val endpoint = "$cleanUrl/v1/systemone"
+            val actualModel = normalizeModelName(modelName, cleanUrl)
 
             val criteriaObj = JsonObject()
             ALL_MAHJONG_TILE_CRITERIA.forEach { (id, name) ->
@@ -669,10 +680,11 @@ class VllmApiClient {
             val fallback = getFallbackTile(position, total)
             Result.success(fallback)
         } catch (e: Exception) {
+            val fallbackModel = normalizeModelName(modelName, baseUrl)
             recordDebugLog(
                 title = "單張牌辨識 (第 $position/$total 張 - 異常)",
                 endpoint = "$baseUrl/v1/systemone",
-                model = modelName,
+                model = fallbackModel,
                 httpCode = null,
                 latencyMs = 0,
                 requestJson = "{}",

@@ -136,7 +136,7 @@ fun SettingsScreen(
                         OutlinedButton(
                             onClick = { 
                                 baseUrl = "https://decision.vllm-sr.ai"
-                                modelName = "d3"
+                                modelName = "vllm-sr/d3"
                             },
                             modifier = Modifier.weight(1f),
                             contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp)
@@ -184,8 +184,8 @@ fun SettingsScreen(
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         FilterChip(
-                            selected = modelName == "d3" || modelName == "vllm-sr/d3",
-                            onClick = { modelName = "d3" },
+                            selected = modelName == "vllm-sr/d3" || modelName == "d3",
+                            onClick = { modelName = "vllm-sr/d3" },
                             label = { Text("⚡ d3 (27B 旗艦)", fontSize = 10.sp) },
                             colors = FilterChipDefaults.filterChipColors(
                                 selectedContainerColor = AccentGold,
@@ -193,8 +193,8 @@ fun SettingsScreen(
                             )
                         )
                         FilterChip(
-                            selected = modelName == "d3-flash" || modelName == "vllm-sr/d3-flash",
-                            onClick = { modelName = "d3-flash" },
+                            selected = modelName == "vllm-sr/d3-flash" || modelName == "d3-flash",
+                            onClick = { modelName = "vllm-sr/d3-flash" },
                             label = { Text("d3-flash (8.4B)", fontSize = 10.sp) },
                             colors = FilterChipDefaults.filterChipColors(
                                 selectedContainerColor = AccentGold,
@@ -202,8 +202,8 @@ fun SettingsScreen(
                             )
                         )
                         FilterChip(
-                            selected = modelName == "d3-mini" || modelName == "vllm-sr/d3-mini",
-                            onClick = { modelName = "d3-mini" },
+                            selected = modelName == "vllm-sr/d3-mini" || modelName == "d3-mini",
+                            onClick = { modelName = "vllm-sr/d3-mini" },
                             label = { Text("d3-mini (4.5B)", fontSize = 10.sp) },
                             colors = FilterChipDefaults.filterChipColors(
                                 selectedContainerColor = AccentGold,
