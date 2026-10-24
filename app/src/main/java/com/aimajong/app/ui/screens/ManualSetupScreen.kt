@@ -27,12 +27,12 @@ import com.aimajong.app.ui.theme.*
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ManualSetupScreen(
+    dealerSeat: PlayerSeat = PlayerSeat.SELF,
     onBack: () -> Unit,
     onStartGameWithHand: (List<MahjongTile>, PlayerSeat) -> Unit
 ) {
     val selectedTiles = remember { mutableStateListOf<MahjongTile>() }
-    var selectedDealer by remember { mutableStateOf(PlayerSeat.SELF) }
-    val isSelfDealer = selectedDealer == PlayerSeat.SELF
+    val isSelfDealer = dealerSeat == PlayerSeat.SELF
     val targetTileCount = if (isSelfDealer) 17 else 16
 
     // 起手手牌絕不能包含花牌，花牌不提供選取
@@ -86,60 +86,39 @@ fun ManualSetupScreen(
                 .padding(horizontal = 12.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.SpaceBetween
         ) {
-            // 【最上方：開局莊家設定卡片】
+            // 【最上方：已確認莊家資訊卡片】
             Card(
                 colors = CardDefaults.cardColors(containerColor = CardBackground),
                 shape = RoundedCornerShape(12.dp),
                 border = androidx.compose.foundation.BorderStroke(1.5.dp, AccentGold),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Column(modifier = Modifier.padding(10.dp)) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("👑 請選擇誰當莊家：", color = AccentGold, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text("👑 本局莊家：【${dealerSeat.title}】", color = AccentGold, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                         Text(
-                            if (isSelfDealer) "我當莊 (起手 17 張 先攻)" else "${selectedDealer.title}當莊 (起手 16 張)",
-                            color = if (isSelfDealer) AccentGold else Color(0xFFFFB74D),
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold
+                            if (isSelfDealer) "您當莊 (起手 17 張牌，先攻出牌)" else "您為閒家 (起手 16 張牌)",
+                            color = TextLight,
+                            fontSize = 12.sp
                         )
                     }
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        listOf(
-                            PlayerSeat.SELF to "我",
-                            PlayerSeat.XIA_JIA to "下家",
-                            PlayerSeat.DUI_JIA to "對家",
-                            PlayerSeat.SHANG_JIA to "上家"
-                        ).forEach { (seat, label) ->
-                            val isSelected = selectedDealer == seat
-                            Button(
-                                onClick = {
-                                    selectedDealer = seat
-                                    if (seat != PlayerSeat.SELF && selectedTiles.size > 16) {
-                                        selectedTiles.removeAt(selectedTiles.lastIndex)
-                                    }
-                                },
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = if (isSelected) AccentGold else MahjongGreenDark,
-                                    contentColor = if (isSelected) Color.Black else TextLight
-                                ),
-                                shape = RoundedCornerShape(8.dp),
-                                modifier = Modifier.weight(1f).height(38.dp),
-                                contentPadding = PaddingValues(0.dp)
-                            ) {
-                                Text(
-                                    text = if (isSelected) "👑 $label" else label,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 13.sp
-                                )
-                            }
-                        }
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color(0xFF1B4D2E)
+                    ) {
+                        Text(
+                            text = "需要 $targetTileCount 張",
+                            color = AccentGold,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                        )
                     }
                 }
             }
@@ -260,7 +239,7 @@ fun ManualSetupScreen(
 
             // 開始對局按鈕
             Button(
-                onClick = { onStartGameWithHand(selectedTiles.toList(), selectedDealer) },
+                onClick = { onStartGameWithHand(selectedTiles.toList(), dealerSeat) },
                 enabled = selectedTiles.size == targetTileCount,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -273,7 +252,7 @@ fun ManualSetupScreen(
             ) {
                 Text(
                     text = if (selectedTiles.size == targetTileCount) {
-                        "開始 AI 決策對局 (${if (isSelfDealer) "我當莊先攻" else "${selectedDealer.title}當莊先攻"}) 🚀"
+                        "開始 AI 決策對局 (${if (isSelfDealer) "我當莊先攻" else "${dealerSeat.title}當莊先攻"}) 🚀"
                     } else {
                         "請選滿 $targetTileCount 張起手手牌 (${selectedTiles.size}/$targetTileCount)"
                     },

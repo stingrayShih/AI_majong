@@ -21,22 +21,39 @@ class MainActivity : ComponentActivity() {
             AIMajongTheme {
                 // 使用 rememberSaveable 確保旋轉螢幕、切換 App 返回後不丟失畫面狀態
                 var currentScreen by rememberSaveable { mutableStateOf("home") }
+                var pendingSetupMode by rememberSaveable { mutableStateOf("photo") } // "photo" 或 "manual"
+                var selectedDealerSeat by rememberSaveable { mutableStateOf(PlayerSeat.SELF) }
                 val gameState by gameViewModel.gameState.collectAsState()
 
                 when (currentScreen) {
                     "home" -> HomeScreen(
                         gameState = gameState,
                         onResumeGame = { currentScreen = "game" },
-                        onStartPhotoScan = { currentScreen = "photo_scan" },
-                        onStartManualSetup = { currentScreen = "manual_setup" },
+                        onStartPhotoScan = {
+                            pendingSetupMode = "photo"
+                            currentScreen = "dealer_selection"
+                        },
+                        onStartManualSetup = {
+                            pendingSetupMode = "manual"
+                            currentScreen = "dealer_selection"
+                        },
                         onViewHistory = { currentScreen = "history" },
                         onOpenSettings = { currentScreen = "settings" }
                     )
 
+                    "dealer_selection" -> DealerSelectionScreen(
+                        mode = pendingSetupMode,
+                        initialDealer = selectedDealerSeat,
+                        onBack = { currentScreen = "home" },
+                        onDealerConfirmed = { confirmedDealer ->
+                            selectedDealerSeat = confirmedDealer
+                            currentScreen = if (pendingSetupMode == "photo") "photo_scan" else "manual_setup"
+                        }
+                    )
+
                     "manual_setup" -> ManualSetupScreen(
-                        onBack = {
-                            currentScreen = if (gameState.handTiles.isNotEmpty() && !gameState.isGameOver) "game" else "home"
-                        },
+                        dealerSeat = selectedDealerSeat,
+                        onBack = { currentScreen = "dealer_selection" },
                         onStartGameWithHand = { tiles, dealerSeat ->
                             gameViewModel.startNewGame(tiles, dealerSeat)
                             currentScreen = "game"
@@ -44,11 +61,10 @@ class MainActivity : ComponentActivity() {
                     )
 
                     "photo_scan" -> PhotoScanScreen(
+                        dealerSeat = selectedDealerSeat,
                         settingsRepo = gameViewModel.settingsRepo,
                         apiClient = gameViewModel.vllmApiClient,
-                        onBack = {
-                            currentScreen = if (gameState.handTiles.isNotEmpty() && !gameState.isGameOver) "game" else "home"
-                        },
+                        onBack = { currentScreen = "dealer_selection" },
                         onPhotoRecognized = { tiles, dealerSeat ->
                             gameViewModel.startNewGame(tiles, dealerSeat)
                             currentScreen = "game"

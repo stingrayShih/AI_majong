@@ -54,6 +54,7 @@ import kotlinx.coroutines.launch
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PhotoScanScreen(
+    dealerSeat: PlayerSeat = PlayerSeat.SELF,
     settingsRepo: SettingsRepository,
     apiClient: VllmApiClient,
     onBack: () -> Unit,
@@ -63,8 +64,8 @@ fun PhotoScanScreen(
     val lifecycleOwner = LocalLifecycleOwner.current
     val coroutineScope = rememberCoroutineScope()
 
-    var selectedDealer by remember { mutableStateOf(PlayerSeat.SELF) }
-    val targetCount = if (selectedDealer == PlayerSeat.SELF) 17 else 16
+    val isSelfDealer = (dealerSeat == PlayerSeat.SELF)
+    val targetCount = if (isSelfDealer) 17 else 16
 
     var hasCameraPermission by remember {
         mutableStateOf(
@@ -243,8 +244,8 @@ fun PhotoScanScreen(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Text("👆 用手指拖動調整綠框對齊手牌", color = AccentGold, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                                    Text("按住框內可平移位置，按住四角把手可縮放長寬", color = TextMuted, fontSize = 11.sp)
+                                    Text("👑 莊家【${dealerSeat.title}】・手指拖動綠框對齊手牌", color = AccentGold, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                    Text("框內任意滑動可平移位置，四角黃色圓球可縮放", color = TextMuted, fontSize = 11.sp)
                                 }
                                 Surface(
                                     shape = RoundedCornerShape(8.dp),
@@ -316,9 +317,92 @@ fun PhotoScanScreen(
                             Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(16.dp),
-                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                                    .padding(14.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
+                                // 微調箭頭按鈕列 (輔助手動精準對齊)
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text("微調：", color = AccentGold, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+
+                                    // 左移
+                                    OutlinedButton(
+                                        onClick = {
+                                            val step = 0.02f
+                                            val w = cropRectNorm.width
+                                            val nL = (cropRectNorm.left - step).coerceAtLeast(0f)
+                                            cropRectNorm = Rect(nL, cropRectNorm.top, nL + w, cropRectNorm.bottom)
+                                        },
+                                        colors = ButtonDefaults.outlinedButtonColors(contentColor = TextLight),
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF388E3C)),
+                                        shape = RoundedCornerShape(8.dp),
+                                        modifier = Modifier.weight(1f).height(36.dp),
+                                        contentPadding = PaddingValues(0.dp)
+                                    ) { Text("⬅ 左", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+
+                                    // 右移
+                                    OutlinedButton(
+                                        onClick = {
+                                            val step = 0.02f
+                                            val w = cropRectNorm.width
+                                            val nL = (cropRectNorm.left + step).coerceAtMost(1f - w)
+                                            cropRectNorm = Rect(nL, cropRectNorm.top, nL + w, cropRectNorm.bottom)
+                                        },
+                                        colors = ButtonDefaults.outlinedButtonColors(contentColor = TextLight),
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF388E3C)),
+                                        shape = RoundedCornerShape(8.dp),
+                                        modifier = Modifier.weight(1f).height(36.dp),
+                                        contentPadding = PaddingValues(0.dp)
+                                    ) { Text("右 ➡", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+
+                                    // 上移
+                                    OutlinedButton(
+                                        onClick = {
+                                            val step = 0.02f
+                                            val h = cropRectNorm.height
+                                            val nT = (cropRectNorm.top - step).coerceAtLeast(0f)
+                                            cropRectNorm = Rect(cropRectNorm.left, nT, cropRectNorm.right, nT + h)
+                                        },
+                                        colors = ButtonDefaults.outlinedButtonColors(contentColor = TextLight),
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF388E3C)),
+                                        shape = RoundedCornerShape(8.dp),
+                                        modifier = Modifier.weight(1f).height(36.dp),
+                                        contentPadding = PaddingValues(0.dp)
+                                    ) { Text("⬆ 上", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+
+                                    // 下移
+                                    OutlinedButton(
+                                        onClick = {
+                                            val step = 0.02f
+                                            val h = cropRectNorm.height
+                                            val nT = (cropRectNorm.top + step).coerceAtMost(1f - h)
+                                            cropRectNorm = Rect(cropRectNorm.left, nT, cropRectNorm.right, nT + h)
+                                        },
+                                        colors = ButtonDefaults.outlinedButtonColors(contentColor = TextLight),
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF388E3C)),
+                                        shape = RoundedCornerShape(8.dp),
+                                        modifier = Modifier.weight(1f).height(36.dp),
+                                        contentPadding = PaddingValues(0.dp)
+                                    ) { Text("下 ⬇", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+
+                                    // 變寬
+                                    OutlinedButton(
+                                        onClick = {
+                                            val nL = (cropRectNorm.left - 0.015f).coerceAtLeast(0f)
+                                            val nR = (cropRectNorm.right + 0.015f).coerceAtMost(1f)
+                                            cropRectNorm = Rect(nL, cropRectNorm.top, nR, cropRectNorm.bottom)
+                                        },
+                                        colors = ButtonDefaults.outlinedButtonColors(contentColor = TextLight),
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF388E3C)),
+                                        shape = RoundedCornerShape(8.dp),
+                                        modifier = Modifier.weight(1f).height(36.dp),
+                                        contentPadding = PaddingValues(0.dp)
+                                    ) { Text("↔ 寬", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                                }
+
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -412,52 +496,38 @@ fun PhotoScanScreen(
                     modifier = Modifier.fillMaxSize(),
                     verticalArrangement = Arrangement.SpaceBetween
                 ) {
-                    // 上方莊家選擇
+                    // 上方已確認莊家資訊
                     Card(
                         colors = CardDefaults.cardColors(containerColor = MahjongGreenDark),
                         shape = RoundedCornerShape(bottomStart = 16.dp, bottomEnd = 16.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Column(modifier = Modifier.padding(14.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text("👑 開局莊家：", color = AccentGold, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text("👑 本局莊家：【${dealerSeat.title}】", color = AccentGold, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                                 Text(
-                                    if (selectedDealer == PlayerSeat.SELF) "起手 17 張 (我開門)" else "起手 16 張",
+                                    if (isSelfDealer) "您當莊 (起手 17 張牌，先攻出牌)" else "您為閒家 (起手 16 張牌)",
                                     color = TextLight,
                                     fontSize = 12.sp
                                 )
                             }
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = Color(0xFF1B4D2E)
                             ) {
-                                listOf(
-                                    PlayerSeat.SELF to "我 (莊)",
-                                    PlayerSeat.XIA_JIA to "下家",
-                                    PlayerSeat.DUI_JIA to "對家",
-                                    PlayerSeat.SHANG_JIA to "上家"
-                                ).forEach { (seat, label) ->
-                                    val isSelected = selectedDealer == seat
-                                    Button(
-                                        onClick = { selectedDealer = seat },
-                                        colors = ButtonDefaults.buttonColors(
-                                            containerColor = if (isSelected) AccentGold else Color(0xFF1B4D2E),
-                                            contentColor = if (isSelected) Color.Black else TextLight
-                                        ),
-                                        shape = RoundedCornerShape(8.dp),
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .height(38.dp),
-                                        contentPadding = PaddingValues(0.dp)
-                                    ) {
-                                        Text(label, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                                    }
-                                }
+                                Text(
+                                    text = "$targetCount 張牌",
+                                    color = AccentGold,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                )
                             }
                         }
                     }
@@ -643,7 +713,7 @@ fun PhotoScanScreen(
                                 // 離線/快速測試按鈕
                                 OutlinedButton(
                                     onClick = {
-                                        recognizedTiles = generateSampleTiles(selectedDealer)
+                                        recognizedTiles = generateSampleTiles(dealerSeat)
                                     },
                                     colors = ButtonDefaults.outlinedButtonColors(contentColor = TextLight),
                                     border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.4f)),
@@ -688,7 +758,7 @@ fun PhotoScanScreen(
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text("👑 莊家：${selectedDealer.title}", color = AccentGold, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                                    Text("👑 莊家：${dealerSeat.title}", color = AccentGold, fontSize = 15.sp, fontWeight = FontWeight.Bold)
                                     Surface(
                                         color = if (isCountValid) Color(0xFF2E7D32) else Color(0xFFC62828),
                                         shape = RoundedCornerShape(12.dp)
@@ -754,7 +824,7 @@ fun PhotoScanScreen(
                     ) {
                         Button(
                             onClick = {
-                                onPhotoRecognized(currentTiles, selectedDealer)
+                                onPhotoRecognized(currentTiles, dealerSeat)
                             },
                             enabled = isCountValid,
                             colors = ButtonDefaults.buttonColors(
@@ -769,7 +839,7 @@ fun PhotoScanScreen(
                             Icon(Icons.Default.Check, contentDescription = null, tint = Color.Black)
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                "確認手牌並開始對局 (${selectedDealer.title}當莊)",
+                                "確認手牌並開始對局 (${dealerSeat.title}當莊)",
                                 color = if (isCountValid) Color.Black else Color.LightGray,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 15.sp
