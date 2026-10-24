@@ -171,4 +171,117 @@ class MahjongModelAndRuleTest {
         assertEquals(4, state3.countVisibleTile(tiao8))
         assertEquals(0, state3.remainingCount(tiao8)) // 4 - 4 = 0 張未現
     }
+
+    @Test
+    fun testMahjongRuleEngineStandardHuAndWaiting() {
+        val m1 = MahjongTile.findByQuery("一萬")!!
+        val m2 = MahjongTile.findByQuery("二萬")!!
+        val m3 = MahjongTile.findByQuery("三萬")!!
+        val m4 = MahjongTile.findByQuery("四萬")!!
+        val m5 = MahjongTile.findByQuery("五萬")!!
+        val m6 = MahjongTile.findByQuery("六萬")!!
+
+        val s7 = MahjongTile.findByQuery("七條")!!
+        val s8 = MahjongTile.findByQuery("八條")!!
+        val s9 = MahjongTile.findByQuery("九條")!!
+
+        val p1 = MahjongTile.findByQuery("一筒")!!
+        val p2 = MahjongTile.findByQuery("二筒")!!
+        val p3 = MahjongTile.findByQuery("三筒")!!
+        val p4 = MahjongTile.findByQuery("四筒")!!
+        val p5 = MahjongTile.findByQuery("五筒")!!
+        val p6 = MahjongTile.findByQuery("六筒")!!
+        val p9 = MahjongTile.findByQuery("九筒")!!
+        val east = MahjongTile.findByQuery("東風")!!
+
+        // 1. 標準 17 張門清胡牌 (5 面子 + 1 雀頭)
+        val validHand17 = listOf(
+            m1, m2, m3,
+            m4, m5, m6,
+            s7, s8, s9,
+            p1, p1, p1,
+            p2, p2, p2,
+            p9, p9
+        )
+        val state1 = GameState(handTiles = validHand17, currentTurnPlayer = PlayerSeat.SELF, phase = TurnPhase.AWAITING_DISCARD)
+        assertTrue(state1.canSelfHuOnDraw())
+
+        // 2. 缺少雀頭不可胡 (將其中一張九筒換成東風，無將牌)
+        val invalidHand17 = listOf(
+            m1, m2, m3,
+            m4, m5, m6,
+            s7, s8, s9,
+            p1, p1, p1,
+            p2, p2, p2,
+            p9, east
+        )
+        val state2 = GameState(handTiles = invalidHand17, currentTurnPlayer = PlayerSeat.SELF, phase = TurnPhase.AWAITING_DISCARD)
+        assertFalse(state2.canSelfHuOnDraw())
+
+        // 3. 雙頭聽牌：聽 3 筒與 6 筒 (手牌 16 張)
+        val waitingHand16 = listOf(
+            m1, m2, m3,
+            m4, m5, m6,
+            s7, s8, s9,
+            p1, p1, p1,
+            p4, p5,
+            p9, p9
+        )
+        val state3 = GameState(
+            handTiles = waitingHand16,
+            lastDiscard = Pair(PlayerSeat.SHANG_JIA, p3),
+            phase = TurnPhase.AWAITING_CALL_RESPONSE
+        )
+        val waitingTiles = state3.getSelfWaitingTiles()
+        assertTrue(waitingTiles.any { it.id == "tong_3" })
+        assertTrue(waitingTiles.any { it.id == "tong_6" })
+
+        // 4. 驗證抓放槍：上家打出 3 筒可抓放槍，打出 1 筒則不可抓放槍
+        assertTrue(state3.canSelfHuOnDiscard(p3))
+        assertFalse(state3.canSelfHuOnDiscard(p1))
+    }
+
+    @Test
+    fun testQiangGangDetection() {
+        val m1 = MahjongTile.findByQuery("一萬")!!
+        val m2 = MahjongTile.findByQuery("二萬")!!
+        val m3 = MahjongTile.findByQuery("三萬")!!
+        val m4 = MahjongTile.findByQuery("四萬")!!
+        val m5 = MahjongTile.findByQuery("五萬")!!
+        val m6 = MahjongTile.findByQuery("六萬")!!
+
+        val s7 = MahjongTile.findByQuery("七條")!!
+        val s8 = MahjongTile.findByQuery("八條")!!
+        val s9 = MahjongTile.findByQuery("九條")!!
+
+        val p1 = MahjongTile.findByQuery("一筒")!!
+        val p4 = MahjongTile.findByQuery("四筒")!!
+        val p5 = MahjongTile.findByQuery("五筒")!!
+        val p3 = MahjongTile.findByQuery("三筒")!!
+        val p6 = MahjongTile.findByQuery("六筒")!!
+        val p9 = MahjongTile.findByQuery("九筒")!!
+        val east = MahjongTile.findByQuery("東風")!!
+
+        // 自己聽 3 筒與 6 筒 (16張)
+        val waitingHand16 = listOf(
+            m1, m2, m3,
+            m4, m5, m6,
+            s7, s8, s9,
+            p1, p1, p1,
+            p4, p5,
+            p9, p9
+        )
+        val state = GameState(
+            handTiles = waitingHand16,
+            currentTurnPlayer = PlayerSeat.DUI_JIA,
+            phase = TurnPhase.AWAITING_DISCARD
+        )
+
+        // 對家宣告補槓 3 筒 -> 自己可以搶槓胡牌！
+        assertTrue(state.canSelfQiangGang(p3))
+        // 對家宣告補槓 6 筒 -> 自己也可以搶槓胡牌！
+        assertTrue(state.canSelfQiangGang(p6))
+        // 對家宣告補槓 東風 -> 無法搶槓
+        assertFalse(state.canSelfQiangGang(east))
+    }
 }

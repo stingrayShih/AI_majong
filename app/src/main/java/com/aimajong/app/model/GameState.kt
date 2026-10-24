@@ -83,6 +83,41 @@ data class GameState(
         return handTiles.count { it.id == targetTile.id } >= 2
     }
 
+    /**
+     * 自己是否能抓對手打出的這張牌放槍 (榮和)
+     */
+    fun canSelfHuOnDiscard(discardedTile: MahjongTile): Boolean {
+        if (isGameOver) return false
+        if (lastDiscard?.first == PlayerSeat.SELF) return false
+        if (justMeldedThisTurn && currentTurnPlayer == PlayerSeat.SELF) return false
+        return MahjongRuleEngine.canHu(handTiles, melds, discardedTile)
+    }
+
+    /**
+     * 自己是否能搶對手補槓的牌 (搶槓胡牌)
+     */
+    fun canSelfQiangGang(buGangTile: MahjongTile): Boolean {
+        if (isGameOver) return false
+        if (justMeldedThisTurn && currentTurnPlayer == PlayerSeat.SELF) return false
+        return MahjongRuleEngine.canHu(handTiles, melds, buGangTile)
+    }
+
+    /**
+     * 自己摸牌後是否已達成自摸 (輪到自己出牌階段，手牌共 17 張等效牌)
+     */
+    fun canSelfHuOnDraw(): Boolean {
+        if (isGameOver) return false
+        if (justMeldedThisTurn && currentTurnPlayer == PlayerSeat.SELF) return false
+        return MahjongRuleEngine.canHu(handTiles, melds, null)
+    }
+
+    /**
+     * 取得自己當前手牌聽哪些牌
+     */
+    fun getSelfWaitingTiles(): List<MahjongTile> {
+        return MahjongRuleEngine.getWaitingTiles(handTiles, melds)
+    }
+
     fun canMingGang(targetTile: MahjongTile): Boolean {
         if (lastDiscard?.first == PlayerSeat.SELF) return false
         return handTiles.count { it.id == targetTile.id } >= 3

@@ -262,17 +262,58 @@ class VllmApiClient {
                     appendLine("我的門前手牌 (${state.concealedHandCount}張): ${state.handTiles.joinToString(" ") { it.name }} (加副露共 ${totalHand}張，當前等待他家打牌反應)")
                 }
 
+                // 若手牌已達聽牌條件 (等效 16 張暗牌+副露)，提供聽牌與場上剩餘未現張數資訊
+                val waitingTiles = if (totalHand == 16) state.getSelfWaitingTiles() else emptyList()
+                if (waitingTiles.isNotEmpty()) {
+                    val waitDesc = waitingTiles.joinToString(", ") { "${it.name}(剩${state.remainingCount(it)}張)" }
+                    val totalRem = waitingTiles.sumOf { state.remainingCount(it) }
+                    appendLine("【我方當前狀態：已聽牌！】聽牌名單: $waitDesc | 總計剩餘 ${totalRem} 張")
+                }
+
                 appendLine("--- 各家副露 (吃/碰/明槓/暗槓) ---")
                 appendLine("我的副露: ${formatMelds(state.melds, isSelf = true)}")
                 appendLine("上家副露: ${formatMelds(state.otherMelds[PlayerSeat.SHANG_JIA] ?: emptyList(), isSelf = false)}")
                 appendLine("對家副露: ${formatMelds(state.otherMelds[PlayerSeat.DUI_JIA] ?: emptyList(), isSelf = false)}")
                 appendLine("下家副露: ${formatMelds(state.otherMelds[PlayerSeat.XIA_JIA] ?: emptyList(), isSelf = false)}")
 
+                // 標註牌河中被叫走 (入副露) 的牌
+                val allMelds = state.melds + state.otherMelds.values.flatten()
+                val claimedByMeld = mutableMapOf<Pair<PlayerSeat, String>, PlayerSeat>()
+                allMelds.forEach { m ->
+                    val fromSeat = m.targetSeat
+                    val trigger = m.triggerTile
+                    if (fromSeat != null && trigger != null) {
+                        val callerSeat = when {
+                            m in state.melds -> PlayerSeat.SELF
+                            m in (state.otherMelds[PlayerSeat.SHANG_JIA] ?: emptyList()) -> PlayerSeat.SHANG_JIA
+                            m in (state.otherMelds[PlayerSeat.DUI_JIA] ?: emptyList()) -> PlayerSeat.DUI_JIA
+                            m in (state.otherMelds[PlayerSeat.XIA_JIA] ?: emptyList()) -> PlayerSeat.XIA_JIA
+                            else -> null
+                        }
+                        if (callerSeat != null) {
+                            claimedByMeld[Pair(fromSeat, trigger.id)] = callerSeat
+                        }
+                    }
+                }
+
+                fun formatRiver(seat: PlayerSeat): String {
+                    val river = state.discards[seat] ?: return "無"
+                    if (river.isEmpty()) return "無"
+                    return river.joinToString(" ") { tile ->
+                        val caller = claimedByMeld[Pair(seat, tile.id)]
+                        if (caller != null) {
+                            "${tile.name}(被${caller.title}叫走)"
+                        } else {
+                            tile.name
+                        }
+                    }
+                }
+
                 appendLine("--- 各家牌河 (捨牌) ---")
-                appendLine("上家打牌: ${state.discards[PlayerSeat.SHANG_JIA]?.joinToString(" ") { it.name } ?: "無"}")
-                appendLine("對家打牌: ${state.discards[PlayerSeat.DUI_JIA]?.joinToString(" ") { it.name } ?: "無"}")
-                appendLine("下家打牌: ${state.discards[PlayerSeat.XIA_JIA]?.joinToString(" ") { it.name } ?: "無"}")
-                appendLine("我的打牌: ${state.discards[PlayerSeat.SELF]?.joinToString(" ") { it.name } ?: "無"}")
+                appendLine("上家打牌: ${formatRiver(PlayerSeat.SHANG_JIA)}")
+                appendLine("對家打牌: ${formatRiver(PlayerSeat.DUI_JIA)}")
+                appendLine("下家打牌: ${formatRiver(PlayerSeat.XIA_JIA)}")
+                appendLine("我的打牌: ${formatRiver(PlayerSeat.SELF)}")
 
                 val lastDiscard = state.lastDiscard
                 if (lastDiscard != null) {

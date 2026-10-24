@@ -1,6 +1,7 @@
 package com.aimajong.app.ui.screens
 
 import android.widget.Toast
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -48,6 +49,7 @@ fun GameScreen(
     var showTilePickerForDraw by remember { mutableStateOf(false) }
     var showTilePickerForOtherTurn by remember { mutableStateOf(false) }
     var showOtherMeldDialog by remember { mutableStateOf(false) }
+    var showOtherBuGangDialog by remember { mutableStateOf(false) }
     var showSelfMeldDialog by remember { mutableStateOf(false) }
     var showAnGangDialog by remember { mutableStateOf(false) }
     var showBuGangDialog by remember { mutableStateOf(false) }
@@ -285,6 +287,66 @@ fun GameScreen(
 
             // 3. 自己的手牌區域
             Column(modifier = Modifier.fillMaxWidth()) {
+                val waitingTiles = remember(state.handTiles, state.melds) {
+                    if (state.handTiles.size + state.melds.size * 3 == 16) {
+                        state.getSelfWaitingTiles()
+                    } else {
+                        emptyList()
+                    }
+                }
+
+                if (waitingTiles.isNotEmpty()) {
+                    Card(
+                        shape = RoundedCornerShape(8.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF1E3A2F)),
+                        border = BorderStroke(1.dp, AccentGold),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 6.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("🎯 聽牌中", color = AccentGold, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Row(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                val totalRemaining = waitingTiles.sumOf { state.remainingCount(it) }
+                                waitingTiles.forEach { tile ->
+                                    val remaining = state.remainingCount(tile)
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier
+                                            .background(Color(0xFF14241D), RoundedCornerShape(4.dp))
+                                            .padding(horizontal = 4.dp, vertical = 2.dp)
+                                    ) {
+                                        MahjongTileView(tile = tile, width = 18.dp, height = 26.dp)
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = "剩 $remaining 張",
+                                            color = if (remaining > 0) Color(0xFF81C784) else Color.Gray,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+                                Text(
+                                    text = "共 $totalRemaining 張",
+                                    color = AccentGold,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+                }
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -352,6 +414,15 @@ fun GameScreen(
                 onAnGangClicked = { showAnGangDialog = true },
                 onBuGangClicked = { showBuGangDialog = true },
                 onOtherTurnClicked = { showTilePickerForOtherTurn = true },
+                onOtherBuGangClicked = {
+                    val currentSeat = state.currentTurnPlayer
+                    val otherPengs = state.otherMelds[currentSeat]?.filter { it.type == ActionType.PENG } ?: emptyList()
+                    if (otherPengs.size == 1) {
+                        viewModel.onOtherBuGang(currentSeat, otherPengs.first())
+                    } else if (otherPengs.size > 1) {
+                        showOtherBuGangDialog = true
+                    }
+                },
                 onOtherMeldClicked = { showOtherMeldDialog = true },
                 onPassCallClicked = { viewModel.onPassCall() },
                 onZiMoClicked = {
@@ -435,7 +506,41 @@ fun GameScreen(
         )
     }
 
-    // 宣告胡牌
+    // 他家補槓選擇 (多組碰牌時)
+    if (showOtherBuGangDialog) {
+        val currentSeat = state.currentTurnPlayer
+        val otherPengs = state.otherMelds[currentSeat]?.filter { it.type == ActionType.PENG } ?: emptyList()
+        OtherPlayerBuGangDialog(
+            seat = currentSeat,
+            pengMelds = otherPengs,
+            onDismiss = { showOtherBuGangDialog = false },
+            onMeldSelected = { meld ->
+                viewModel.onOtherBuGang(currentSeat, meld)
+                showOtherBuGangDialog = false
+            }
+        )
+    }
+
+    // 偵測到自己可胡牌 (抓放槍或搶槓) 時跳出確認框
+    val huPromptData by viewModel.showSelfHuPrompt.collectAsState()
+    if (huPromptData != null) {
+        SelfHuConfirmDialog(
+            discardedTile = huPromptData!!.tile,
+            discardedSeat = huPromptData!!.seat,
+            isQiangGang = huPromptData!!.isQiangGang,
+            onConfirmHu = {
+                val ok = viewModel.onDeclareHu(PlayerSeat.SELF, huPromptData!!.seat)
+                if (!ok) {
+                    Toast.makeText(context, "⚠️ 宣告胡牌失敗，請確認手牌規則！", Toast.LENGTH_SHORT).show()
+                }
+            },
+            onDeclineHu = {
+                viewModel.onDeclineSelfHu()
+            }
+        )
+    }
+
+    // 宣告胡牌 (支援自己或他家宣告胡牌)
     if (showHuDialog) {
         HuDialog(
             state = state,
@@ -446,7 +551,7 @@ fun GameScreen(
                 if (ok) {
                     showHuDialog = false
                 } else {
-                    Toast.makeText(context, "⚠️ 吃碰槓的那一家當回合不能胡牌，必須先打出一張牌！", Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, "⚠️ 宣告胡牌失敗：吃碰槓當回合不可胡牌，且自己手牌必須符合 5 面子 + 1 雀頭！", Toast.LENGTH_LONG).show()
                 }
             }
         )
@@ -529,6 +634,7 @@ fun DynamicActionBar(
     onAnGangClicked: () -> Unit,
     onBuGangClicked: () -> Unit,
     onOtherTurnClicked: () -> Unit,
+    onOtherBuGangClicked: () -> Unit,
     onOtherMeldClicked: () -> Unit,
     onPassCallClicked: () -> Unit,
     onZiMoClicked: () -> Unit,
@@ -549,6 +655,8 @@ fun DynamicActionBar(
     when {
         state.isInCallResponsePhase -> {
             val isMyDiscard = state.lastDiscard?.first == PlayerSeat.SELF
+            val lastTile = state.lastDiscard?.second
+            val canSelfHu = lastTile != null && state.canSelfHuOnDiscard(lastTile)
 
             Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Row(
@@ -579,9 +687,17 @@ fun DynamicActionBar(
                         onClick = onFangQiangClicked,
                         modifier = Modifier.weight(1.1f).heightIn(min = 44.dp),
                         contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = TileWanRed)
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (canSelfHu) TileWanRed else Color(0xFF6D4C41)
+                        )
                     ) {
-                        Text("抓放槍胡", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp, textAlign = TextAlign.Center)
+                        Text(
+                            text = if (canSelfHu) "我抓放槍胡 🏆" else "他家放槍胡",
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.sp,
+                            textAlign = TextAlign.Center
+                        )
                     }
                 }
 
@@ -635,7 +751,7 @@ fun DynamicActionBar(
         state.canSelfDiscard -> {
             val anGangList = state.getAnGangOptions()
             val buGangList = state.getBuGangOptions()
-            val canHuNow = !state.justMeldedThisTurn
+            val canHuNow = !state.justMeldedThisTurn && state.canSelfHuOnDraw()
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -670,7 +786,7 @@ fun DynamicActionBar(
                         contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = TileWanRed)
                     ) {
-                        Text("自摸胡牌", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp, textAlign = TextAlign.Center)
+                        Text("自摸胡牌 🏆", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp, textAlign = TextAlign.Center)
                     }
                 }
             }
@@ -679,26 +795,47 @@ fun DynamicActionBar(
         else -> {
             val currentSeat = state.currentTurnPlayer
             val canOtherHuNow = !state.justMeldedThisTurn
+            val otherPengs = remember(state.otherMelds, currentSeat) {
+                state.otherMelds[currentSeat]?.filter { it.type == ActionType.PENG } ?: emptyList()
+            }
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Button(
-                    onClick = onOtherTurnClicked,
-                    modifier = Modifier.weight(2f).heightIn(min = 48.dp),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = AccentGold)
+            Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Text("記錄【${currentSeat.title}】摸打出牌", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                }
-                if (canOtherHuNow) {
                     Button(
-                        onClick = onZiMoClicked,
-                        modifier = Modifier.weight(1.2f).height(48.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = TileWanRed)
+                        onClick = onOtherTurnClicked,
+                        modifier = Modifier.weight(2f).heightIn(min = 48.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = AccentGold)
                     ) {
-                        Text("${currentSeat.title}自摸", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        Text("記錄【${currentSeat.title}】摸打出牌", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    }
+                    if (canOtherHuNow) {
+                        Button(
+                            onClick = onZiMoClicked,
+                            modifier = Modifier.weight(1.2f).height(48.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = TileWanRed)
+                        ) {
+                            Text("${currentSeat.title}自摸", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+
+                if (otherPengs.isNotEmpty()) {
+                    Button(
+                        onClick = onOtherBuGangClicked,
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00897B)),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        val label = if (otherPengs.size == 1) {
+                            "【${currentSeat.title}】補槓 (${otherPengs.first().tiles.first().name})"
+                        } else {
+                            "【${currentSeat.title}】補槓 (共 ${otherPengs.size} 組碰牌可選)"
+                        }
+                        Text("⏩ $label", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                     }
                 }
             }
@@ -1107,6 +1244,118 @@ fun OtherPlayerMeldDialog(
 }
 
 /**
+ * 他家補槓選擇對話框 (多組碰牌時供選擇)
+ */
+@Composable
+fun OtherPlayerBuGangDialog(
+    seat: PlayerSeat,
+    pengMelds: List<Meld>,
+    onDismiss: () -> Unit,
+    onMeldSelected: (Meld) -> Unit
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(shape = RoundedCornerShape(16.dp), color = CardBackground, modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("選擇【${seat.title}】補槓牌面", color = AccentGold, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(12.dp))
+
+                pengMelds.forEach { meld ->
+                    val tile = meld.tiles.firstOrNull() ?: meld.triggerTile ?: return@forEach
+                    Button(
+                        onClick = { onMeldSelected(meld) },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00897B)),
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                    ) {
+                        Text("補槓 [${tile.name}] (碰牌組升級為槓牌)", color = Color.White)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+                TextButton(onClick = onDismiss) { Text("取消", color = TextMuted) }
+            }
+        }
+    }
+}
+
+/**
+ * 偵測到自己可胡牌時跳出的專屬確認對話框 (支援抓放槍與搶槓)
+ */
+@Composable
+fun SelfHuConfirmDialog(
+    discardedTile: MahjongTile,
+    discardedSeat: PlayerSeat,
+    isQiangGang: Boolean = false,
+    onConfirmHu: () -> Unit,
+    onDeclineHu: () -> Unit
+) {
+    Dialog(onDismissRequest = onDeclineHu) {
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = CardBackground,
+            modifier = Modifier.fillMaxWidth().padding(8.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(20.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = if (isQiangGang) "💥 偵測到可【搶槓胡牌】！" else "🏆 偵測到可胡牌！",
+                    color = AccentGold,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Text(
+                    text = if (isQiangGang) "【${discardedSeat.title}】宣告補槓 [${discardedTile.name}]" else "【${discardedSeat.title}】打出 [${discardedTile.name}]",
+                    color = Color.White,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Medium
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = if (isQiangGang) "你正聽這張牌，可依規則進行【搶槓胡牌】！(視同${discardedSeat.title}放槍)" else "你的手牌已符合正規 5 面子 + 1 雀頭胡牌型態！",
+                    color = TextLight,
+                    fontSize = 13.sp,
+                    textAlign = TextAlign.Center
+                )
+
+                Spacer(modifier = Modifier.height(20.dp))
+
+                Button(
+                    onClick = onConfirmHu,
+                    colors = ButtonDefaults.buttonColors(containerColor = TileWanRed),
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier.fillMaxWidth().height(48.dp)
+                ) {
+                    Text(
+                        if (isQiangGang) "是，確認搶槓胡牌 🏆" else "是，確認抓放槍胡牌 🏆",
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                OutlinedButton(
+                    onClick = onDeclineHu,
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = TextLight),
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier.fillMaxWidth().height(44.dp)
+                ) {
+                    Text(
+                        if (isQiangGang) "否，放棄搶槓 (放行補槓)" else "否，不胡 (過水 / 考慮其他動作)",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Normal
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
  * 宣告胡牌對話框
  */
 @Composable
@@ -1121,6 +1370,12 @@ fun HuDialog(
     var loser by remember { mutableStateOf(state.lastDiscard?.first ?: PlayerSeat.SHANG_JIA) }
 
     val isWinnerMeldedThisTurn = winner == state.currentTurnPlayer && state.justMeldedThisTurn
+    val isSelfHuIllegal = winner == PlayerSeat.SELF && if (isZiMo) {
+        !state.canSelfHuOnDraw()
+    } else {
+        val lastTile = state.lastDiscard?.second
+        lastTile == null || !state.canSelfHuOnDiscard(lastTile)
+    }
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(shape = RoundedCornerShape(16.dp), color = CardBackground, modifier = Modifier.fillMaxWidth()) {
@@ -1200,13 +1455,22 @@ fun HuDialog(
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold
                     )
+                } else if (isSelfHuIllegal) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        if (isZiMo) "⚠️ 規則禁止：你的手牌未符合標準 5 面子 + 1 雀頭自摸牌型！"
+                        else "⚠️ 規則禁止：你的手牌未符合標準 5 面子 + 1 雀頭胡牌型態！",
+                        color = Color.Red,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
 
                 Spacer(modifier = Modifier.height(14.dp))
 
                 Button(
                     onClick = { onHuConfirmed(winner, if (isZiMo) null else loser) },
-                    enabled = !isWinnerMeldedThisTurn,
+                    enabled = !isWinnerMeldedThisTurn && !isSelfHuIllegal,
                     colors = ButtonDefaults.buttonColors(
                         containerColor = if (isZiMo) Color(0xFF2E7D32) else TileWanRed,
                         disabledContainerColor = Color.DarkGray
@@ -1215,6 +1479,7 @@ fun HuDialog(
                 ) {
                     Text(
                         text = if (isWinnerMeldedThisTurn) "禁止胡牌 (副露需先出牌)"
+                        else if (isSelfHuIllegal) "禁止胡牌 (手牌未達胡牌條件)"
                         else if (isZiMo) "確認【${winner.title}】自摸胡牌 🏆"
                         else "確認【${winner.title}】胡牌 (【${loser.title}】放槍) 🏆",
                         color = Color.White,
