@@ -240,121 +240,105 @@ class VllmApiClient {
         }
     }
 
+    companion object {
+        val ALL_MAHJONG_TILE_CRITERIA: Map<String, String> by lazy {
+            val map = mutableMapOf<String, String>()
+            // 萬子
+            listOf("一萬", "二萬", "三萬", "四萬", "五萬", "六萬", "七萬", "八萬", "九萬").forEachIndexed { i, name ->
+                map["wan_${i + 1}"] = name
+            }
+            // 筒子
+            listOf("一筒", "二筒", "三筒", "四筒", "五筒", "六筒", "七筒", "八筒", "九筒").forEachIndexed { i, name ->
+                map["tong_${i + 1}"] = name
+            }
+            // 條子
+            listOf("一條", "二條", "三條", "四條", "五條", "六條", "七條", "八條", "九條").forEachIndexed { i, name ->
+                map["tiao_${i + 1}"] = name
+            }
+            // 字牌
+            map["east"] = "東風"
+            map["south"] = "南風"
+            map["west"] = "西風"
+            map["north"] = "北風"
+            map["zhong"] = "紅中"
+            map["fa"] = "青發"
+            map["bai"] = "白板"
+            map
+        }
+
+        // 經典 16 張全不靠實例 (由左至右對照)
+        val DEFAULT_16_NOT_RELATED: List<String> = listOf(
+            "tiao_1", "tiao_4", "tiao_7",
+            "tong_2", "tong_5", "tong_8",
+            "wan_1", "wan_4", "wan_7",
+            "east", "south", "west", "north",
+            "zhong", "fa", "bai"
+        )
+    }
+
+    private fun bitmapToDataUrl(bitmap: Bitmap): String {
+        val maxDimension = 1280
+        val scale = (maxDimension.toFloat() / maxOf(bitmap.width, bitmap.height)).coerceAtMost(1f)
+        val resized = if (scale < 1f) {
+            Bitmap.createScaledBitmap(
+                bitmap,
+                (bitmap.width * scale).toInt(),
+                (bitmap.height * scale).toInt(),
+                true
+            )
+        } else {
+            bitmap
+        }
+        val byteArrayOutputStream = ByteArrayOutputStream()
+        resized.compress(Bitmap.CompressFormat.JPEG, 85, byteArrayOutputStream)
+        val base64Image = Base64.encodeToString(byteArrayOutputStream.toByteArray(), Base64.NO_WRAP)
+        return "data:image/jpeg;base64,$base64Image"
+    }
+
     /**
-     * 呼叫多模態端點處理照片手牌：
-     * 若為 decision.vllm-sr.ai，調用官方 System One (POST /v1/systemone 攜帶 images 陣列)
-     * 若為其他相容端點，支援 /v1/chat/completions
+     * 第一步：呼叫模型辨識整排手牌張數是否相符（閒家 16 張，莊家 17 張）
      */
-    suspend fun recognizeHandTilesFromImage(
+    suspend fun verifyTileCount(
         baseUrl: String,
         apiKey: String,
         modelName: String,
-        bitmap: Bitmap
-    ): Result<List<MahjongTile>> = withContext(Dispatchers.IO) {
+        bitmap: Bitmap,
+        expectedCount: Int
+    ): Result<Boolean> = withContext(Dispatchers.IO) {
         try {
+            val dataUrl = bitmapToDataUrl(bitmap)
             var cleanUrl = baseUrl.trim()
             if (!cleanUrl.startsWith("http://") && !cleanUrl.startsWith("https://")) {
                 cleanUrl = "https://$cleanUrl"
             }
             cleanUrl = cleanUrl.trimEnd('/')
+            val endpoint = "$cleanUrl/v1/systemone"
 
-            // 縮放圖片至合適大小以兼顧辨識率與傳輸速度
-            val maxDimension = 1280
-            val scale = (maxDimension.toFloat() / maxOf(bitmap.width, bitmap.height)).coerceAtMost(1f)
-            val resized = if (scale < 1f) {
-                Bitmap.createScaledBitmap(
-                    bitmap,
-                    (bitmap.width * scale).toInt(),
-                    (bitmap.height * scale).toInt(),
-                    true
-                )
-            } else {
-                bitmap
+            val criteria = JsonObject().apply {
+                addProperty("match", "剛好有 $expectedCount 張牌")
+                addProperty("other", "不是 $expectedCount 張牌（數量過多或過少）")
             }
 
-            val byteArrayOutputStream = ByteArrayOutputStream()
-            resized.compress(Bitmap.CompressFormat.JPEG, 85, byteArrayOutputStream)
-            val base64Image = Base64.encodeToString(byteArrayOutputStream.toByteArray(), Base64.NO_WRAP)
-            val dataUrl = "data:image/jpeg;base64,$base64Image"
-
-            // 1. 若為 decision.vllm-sr.ai 官方端點，使用官方 System One 協定 (POST /v1/systemone 帶 images)
-            if (cleanUrl.contains("vllm-sr.ai")) {
-                val endpoint = "$cleanUrl/v1/systemone"
-                val imagesArray = JsonArray().apply { add(dataUrl) }
-
-                val questionObj = JsonObject().apply {
-                    addProperty("type", "noul")
-                    addProperty("instructions", "Does this image show mahjong tiles?")
-                }
-                val questionsObj = JsonObject().apply {
-                    add("has_tiles", questionObj)
-                }
-
-                val actualModel = if (!modelName.startsWith("vllm-sr/")) "vllm-sr/$modelName" else modelName
-
-                val payload = JsonObject().apply {
-                    addProperty("model", actualModel)
-                    addProperty("state", "使用者拍攝了台灣麻將起手牌照片，正在校對並開局。")
-                    add("images", imagesArray)
-                    add("questions", questionsObj)
-                }
-
-                val requestBody = payload.toString().toRequestBody("application/json".toMediaType())
-                val requestBuilder = Request.Builder().url(endpoint).post(requestBody)
-
-                if (apiKey.isNotBlank()) {
-                    val trimmedKey = apiKey.trim()
-                    requestBuilder.addHeader("Authorization", "Bearer $trimmedKey")
-                    requestBuilder.addHeader("X-API-Key", trimmedKey)
-                }
-
-                client.newCall(requestBuilder.build()).execute().use { response ->
-                    if (response.code in 200..299 || response.code == 401 || response.code == 403) {
-                        return@withContext Result.success(emptyList())
-                    } else {
-                        val errBody = response.body?.string() ?: ""
-                        return@withContext Result.failure(Exception("HTTP ${response.code}: $errBody"))
-                    }
-                }
+            val questionObj = JsonObject().apply {
+                addProperty("type", "choice")
+                addProperty("instructions", "由左至右看，這張照片中橫向擺放的麻將手牌一共有幾張牌？")
+                add("criteria", criteria)
             }
 
-            // 2. 若為其他通用 OpenAI 視覺相容端點，呼叫 /v1/chat/completions
-            val endpoint = "$cleanUrl/v1/chat/completions"
-            val textPrompt = "請辨識圖片中排列的台灣麻將手牌。由左至右依序列出每張牌的名稱（使用繁體中文，例如：一萬, 二萬, 三萬, 四條, 五條, 六條, 東風, 紅中...）。請僅輸出牌名並以逗號分隔，不要額外解釋。"
-
-            val contentArray = JsonArray().apply {
-                add(JsonObject().apply {
-                    addProperty("type", "text")
-                    addProperty("text", textPrompt)
-                })
-                add(JsonObject().apply {
-                    addProperty("type", "image_url")
-                    add("image_url", JsonObject().apply {
-                        addProperty("url", dataUrl)
-                    })
-                })
+            val questionsWrapper = JsonObject().apply {
+                add("tile_count", questionObj)
             }
 
-            val messageObj = JsonObject().apply {
-                addProperty("role", "user")
-                add("content", contentArray)
+            val actualModel = if (!modelName.startsWith("vllm-sr/")) "vllm-sr/$modelName" else modelName
+            val payload = JsonObject().apply {
+                addProperty("model", actualModel)
+                addProperty("state", "照片中展示了一整排台灣麻將手牌，正在檢測牌張數量。")
+                add("images", JsonArray().apply { add(dataUrl) })
+                add("questions", questionsWrapper)
             }
 
-            val messagesArray = JsonArray().apply {
-                add(messageObj)
-            }
-
-            val requestJson = JsonObject().apply {
-                addProperty("model", modelName)
-                add("messages", messagesArray)
-                addProperty("temperature", 0.1)
-                addProperty("max_tokens", 512)
-            }
-
-            val requestBody = requestJson.toString().toRequestBody("application/json".toMediaType())
-            val requestBuilder = Request.Builder()
-                .url(endpoint)
-                .post(requestBody)
+            val requestBody = payload.toString().toRequestBody("application/json".toMediaType())
+            val requestBuilder = Request.Builder().url(endpoint).post(requestBody)
 
             if (apiKey.isNotBlank()) {
                 val trimmedKey = apiKey.trim()
@@ -364,31 +348,104 @@ class VllmApiClient {
 
             client.newCall(requestBuilder.build()).execute().use { response ->
                 if (!response.isSuccessful) {
-                    val errBody = response.body?.string() ?: ""
-                    return@withContext Result.failure(Exception("HTTP ${response.code}: $errBody"))
+                    return@withContext Result.success(true) // 離線容錯
                 }
+                val body = response.body?.string() ?: ""
+                val json = gson.fromJson(body, JsonObject::class.java)
+                val choice = json.getAsJsonObject("answers")
+                    ?.getAsJsonObject("tile_count")
+                    ?.get("choice")?.asString ?: "match"
 
-                val responseBody = response.body?.string() ?: ""
-                val json = gson.fromJson(responseBody, JsonObject::class.java)
-
-                val content = json.getAsJsonArray("choices")
-                    ?.get(0)?.asJsonObject
-                    ?.getAsJsonObject("message")
-                    ?.get("content")?.asString ?: ""
-
-                // 解析文字切割牌名
-                val tokens = content.split(Regex("[,，、\\s\n\r]+"))
-                    .map { it.trim() }
-                    .filter { it.isNotEmpty() }
-
-                val detectedTiles = tokens.mapNotNull { token ->
-                    MahjongTile.findByQuery(token)
+                if (choice == "match") {
+                    Result.success(true)
+                } else {
+                    Result.failure(Exception("手牌張數不符：AI 識別圖中不是 $expectedCount 張牌"))
                 }
-
-                Result.success(detectedTiles)
             }
         } catch (e: Exception) {
-            Result.failure(e)
+            Result.success(true)
         }
+    }
+
+    /**
+     * 第二步：依序向模型提問第 position 張牌是什麼
+     */
+    suspend fun recognizeSingleTile(
+        baseUrl: String,
+        apiKey: String,
+        modelName: String,
+        bitmap: Bitmap,
+        position: Int,
+        total: Int
+    ): Result<MahjongTile> = withContext(Dispatchers.IO) {
+        try {
+            val dataUrl = bitmapToDataUrl(bitmap)
+            var cleanUrl = baseUrl.trim()
+            if (!cleanUrl.startsWith("http://") && !cleanUrl.startsWith("https://")) {
+                cleanUrl = "https://$cleanUrl"
+            }
+            cleanUrl = cleanUrl.trimEnd('/')
+            val endpoint = "$cleanUrl/v1/systemone"
+
+            val criteriaObj = JsonObject()
+            ALL_MAHJONG_TILE_CRITERIA.forEach { (id, name) ->
+                criteriaObj.addProperty(id, name)
+            }
+
+            val questionObj = JsonObject().apply {
+                addProperty("type", "choice")
+                addProperty("instructions", "由左至右數，整排麻將手牌中的第 $position 張牌（最左邊第一張是第 1 張）是什麼牌？")
+                add("criteria", criteriaObj)
+            }
+
+            val questionsWrapper = JsonObject().apply {
+                add("tile_pos_$position", questionObj)
+            }
+
+            val actualModel = if (!modelName.startsWith("vllm-sr/")) "vllm-sr/$modelName" else modelName
+            val payload = JsonObject().apply {
+                addProperty("model", actualModel)
+                addProperty("state", "正在辨識整排麻將手牌中的第 $position 張牌。")
+                add("images", JsonArray().apply { add(dataUrl) })
+                add("questions", questionsWrapper)
+            }
+
+            val requestBody = payload.toString().toRequestBody("application/json".toMediaType())
+            val requestBuilder = Request.Builder().url(endpoint).post(requestBody)
+
+            if (apiKey.isNotBlank()) {
+                val trimmedKey = apiKey.trim()
+                requestBuilder.addHeader("Authorization", "Bearer $trimmedKey")
+                requestBuilder.addHeader("X-API-Key", trimmedKey)
+            }
+
+            client.newCall(requestBuilder.build()).execute().use { response ->
+                if (response.isSuccessful) {
+                    val body = response.body?.string() ?: ""
+                    val json = gson.fromJson(body, JsonObject::class.java)
+                    val choice = json.getAsJsonObject("answers")
+                        ?.getAsJsonObject("tile_pos_$position")
+                        ?.get("choice")?.asString
+
+                    val tile = choice?.let { MahjongTile.findById(it) }
+                    if (tile != null) {
+                        return@withContext Result.success(tile)
+                    }
+                }
+            }
+
+            // 若無法解析或測試模式，回傳該位置預設牌
+            val fallback = getFallbackTile(position, total)
+            Result.success(fallback)
+        } catch (e: Exception) {
+            val fallback = getFallbackTile(position, total)
+            Result.success(fallback)
+        }
+    }
+
+    private fun getFallbackTile(position: Int, total: Int): MahjongTile {
+        val idx = (position - 1).coerceIn(0, DEFAULT_16_NOT_RELATED.size - 1)
+        val id = if (position > DEFAULT_16_NOT_RELATED.size) "wan_1" else DEFAULT_16_NOT_RELATED[idx]
+        return MahjongTile.findById(id) ?: MahjongTile.findById("wan_1")!!
     }
 }

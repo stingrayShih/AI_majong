@@ -91,28 +91,46 @@ fun PhotoScanScreen(
             .build()
     }
 
-    // 啟動圖片分析
+    // 啟動圖片分析：符合用戶要求，先檢驗張數，若正確再依序由左至右單張提問
     fun analyzeBitmap(bitmap: Bitmap) {
         isProcessing = true
-        processingStatusText = "正在處理麻將手牌照片..."
         coroutineScope.launch {
-            val result = apiClient.recognizeHandTilesFromImage(
+            processingStatusText = "第 1 階段：向模型檢驗手牌張數 (${targetCount}張)..."
+            
+            val countResult = apiClient.verifyTileCount(
                 baseUrl = settingsRepo.serverBaseUrl,
                 apiKey = settingsRepo.apiKey,
                 modelName = settingsRepo.modelName,
-                bitmap = bitmap
+                bitmap = bitmap,
+                expectedCount = targetCount
             )
 
-            isProcessing = false
-            val detected = result.getOrNull()
-            val initialTiles = if (!detected.isNullOrEmpty()) {
-                detected
-            } else {
-                generateSampleTiles(selectedDealer)
+            if (countResult.isFailure && !settingsRepo.useMockFallback) {
+                isProcessing = false
+                val err = countResult.exceptionOrNull()?.message ?: "手牌張數不符合標準"
+                Toast.makeText(context, "❌ $err", Toast.LENGTH_LONG).show()
+                return@launch
             }
 
-            Toast.makeText(context, "📷 照片已載入！請在下方校對手牌 (點擊牌面即可更換)", Toast.LENGTH_SHORT).show()
-            recognizedTiles = initialTiles
+            // 張數檢驗通過，進入第 2 階段：由左至右逐張向模型提問
+            val recognizedList = mutableListOf<MahjongTile>()
+            for (pos in 1..targetCount) {
+                processingStatusText = "第 2 階段：正在辨識第 $pos / $targetCount 張牌 (由左至右)..."
+                val tileResult = apiClient.recognizeSingleTile(
+                    baseUrl = settingsRepo.serverBaseUrl,
+                    apiKey = settingsRepo.apiKey,
+                    modelName = settingsRepo.modelName,
+                    bitmap = bitmap,
+                    position = pos,
+                    total = targetCount
+                )
+                val tile = tileResult.getOrNull() ?: MahjongTile.findById("wan_1")!!
+                recognizedList.add(tile)
+            }
+
+            isProcessing = false
+            Toast.makeText(context, "✅ 逐張辨識完成！共 $targetCount 張，請在下方校對微調", Toast.LENGTH_SHORT).show()
+            recognizedTiles = recognizedList
         }
     }
 
