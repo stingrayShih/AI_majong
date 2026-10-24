@@ -600,7 +600,7 @@ class VllmApiClient {
 
             val questionObj = JsonObject().apply {
                 addProperty("type", "choice")
-                addProperty("instructions", "由左至右數，整排麻將手牌中的第 $position 張牌（最左邊第一張是第 1 張）是什麼牌？")
+                addProperty("instructions", "這張特寫照片中的麻將牌是什麼牌？請辨識牌面花色與數字。")
                 add("criteria", criteriaObj)
             }
 
@@ -611,7 +611,7 @@ class VllmApiClient {
             val actualModel = if (!modelName.startsWith("vllm-sr/")) "vllm-sr/$modelName" else modelName
             val payload = JsonObject().apply {
                 addProperty("model", actualModel)
-                addProperty("state", "正在辨識整排麻將手牌中的第 $position 張牌。")
+                addProperty("state", "裁切後的單張台灣麻將牌特寫照片（第 $position/$total 張），請辨識牌面。")
                 add("images", JsonArray().apply { add(dataUrl) })
                 add("questions", questionsWrapper)
             }
@@ -642,7 +642,7 @@ class VllmApiClient {
             response.close()
 
             recordDebugLog(
-                title = "單張牌辨識 (第 $position/$total 張)",
+                title = "單牌裁切辨識 (第 $position/$total 張)",
                 endpoint = endpoint,
                 model = actualModel,
                 httpCode = code,

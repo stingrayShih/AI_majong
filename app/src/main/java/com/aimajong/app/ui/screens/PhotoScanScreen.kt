@@ -11,6 +11,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.*
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -28,7 +29,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -41,6 +45,7 @@ import com.aimajong.app.data.SettingsRepository
 import com.aimajong.app.model.*
 import com.aimajong.app.network.VllmApiClient
 import com.aimajong.app.ui.components.DebugInspectorDialog
+import com.aimajong.app.ui.components.DraggableCropOverlay
 import com.aimajong.app.ui.components.MahjongTileView
 import com.aimajong.app.ui.components.TilePickerDialog
 import com.aimajong.app.ui.theme.*
@@ -79,6 +84,11 @@ fun PhotoScanScreen(
     // 狀態變數
     var isProcessing by remember { mutableStateOf(false) }
     var processingStatusText by remember { mutableStateOf("vLLM ${settingsRepo.modelName} (27B) 視覺辨識分析中...") }
+
+    // 拍下或選取的原始待裁切圖片
+    var capturedBitmap by remember { mutableStateOf<Bitmap?>(null) }
+    // 手指拖動之手牌裁切框 (歸一化座標)
+    var cropRectNorm by remember { mutableStateOf(Rect(0.04f, 0.22f, 0.96f, 0.48f)) }
 
     // 辨識結果手牌列表 (進入校對微調模式)
     var recognizedTiles by remember { mutableStateOf<List<MahjongTile>?>(null) }
@@ -146,7 +156,7 @@ fun PhotoScanScreen(
                 val bitmap = BitmapFactory.decodeStream(inputStream)
                 inputStream?.close()
                 if (bitmap != null) {
-                    analyzeBitmap(bitmap)
+                    capturedBitmap = bitmap
                 } else {
                     Toast.makeText(context, "無法解析所選圖片", Toast.LENGTH_SHORT).show()
                 }
@@ -161,18 +171,22 @@ fun PhotoScanScreen(
             TopAppBar(
                 title = {
                     Text(
-                        if (recognizedTiles == null) "拍照辨識起手手牌" else "校對與微調手牌",
+                        text = when {
+                            recognizedTiles != null -> "校對與微調手牌"
+                            capturedBitmap != null -> "👆 用手指拖動調整綠框"
+                            else -> "拍照辨識起手手牌"
+                        },
                         color = TextLight,
-                        fontSize = 18.sp,
+                        fontSize = 17.sp,
                         fontWeight = FontWeight.Bold
                     )
                 },
                 navigationIcon = {
                     IconButton(onClick = {
-                        if (recognizedTiles != null) {
-                            recognizedTiles = null // 返回相機重拍
-                        } else {
-                            onBack()
+                        when {
+                            recognizedTiles != null -> recognizedTiles = null
+                            capturedBitmap != null -> capturedBitmap = null
+                            else -> onBack()
                         }
                     }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = TextLight)
@@ -209,7 +223,191 @@ fun PhotoScanScreen(
                 .padding(padding)
         ) {
             if (recognizedTiles == null) {
-                // ==================== 1. 相機拍攝 / 圖片選取 畫面 ====================
+                if (capturedBitmap != null) {
+                    // ==================== 手指拖曳手牌裁切對齊畫面 ====================
+                    Column(
+                        modifier = Modifier.fillMaxSize(),
+                        verticalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        // 頂部提示條
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = MahjongGreenDark),
+                            shape = RoundedCornerShape(bottomStart = 16.dp, bottomEnd = 16.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("👆 用手指拖動調整綠框對齊手牌", color = AccentGold, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                    Text("按住框內可平移位置，按住四角把手可縮放長寬", color = TextMuted, fontSize = 11.sp)
+                                }
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = Color(0xFF1B4D2E)
+                                ) {
+                                    Text(
+                                        text = "共 $targetCount 張牌",
+                                        color = Color.White,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                    )
+                                }
+                            }
+                        }
+
+                        // 中間相片顯示與手指拖曳框
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f)
+                                .background(Color.Black),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Image(
+                                bitmap = capturedBitmap!!.asImageBitmap(),
+                                contentDescription = "待裁切手牌照片",
+                                contentScale = ContentScale.Fit,
+                                modifier = Modifier.fillMaxSize()
+                            )
+
+                            DraggableCropOverlay(
+                                cropRectNorm = cropRectNorm,
+                                onCropRectChanged = { cropRectNorm = it },
+                                tileCount = targetCount,
+                                modifier = Modifier.fillMaxSize()
+                            )
+
+                            if (isProcessing) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .background(Color.Black.copy(alpha = 0.8f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Column(
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        modifier = Modifier.padding(24.dp)
+                                    ) {
+                                        CircularProgressIndicator(color = AccentGold, strokeWidth = 4.dp)
+                                        Spacer(modifier = Modifier.height(16.dp))
+                                        Text(
+                                            processingStatusText,
+                                            color = TextLight,
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            textAlign = TextAlign.Center
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        // 底部控制區
+                        Surface(
+                            color = MahjongGreenDark,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    OutlinedButton(
+                                        onClick = {
+                                            cropRectNorm = Rect(0.04f, 0.22f, 0.96f, 0.48f)
+                                        },
+                                        colors = ButtonDefaults.outlinedButtonColors(contentColor = TextLight),
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.5f)),
+                                        shape = RoundedCornerShape(10.dp),
+                                        modifier = Modifier.weight(1f).height(44.dp)
+                                    ) {
+                                        Icon(Icons.Default.Refresh, contentDescription = null, tint = AccentGold, modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("置中還原", fontSize = 12.sp)
+                                    }
+
+                                    OutlinedButton(
+                                        onClick = { capturedBitmap = null },
+                                        colors = ButtonDefaults.outlinedButtonColors(contentColor = TextLight),
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.5f)),
+                                        shape = RoundedCornerShape(10.dp),
+                                        modifier = Modifier.weight(1f).height(44.dp)
+                                    ) {
+                                        Icon(Icons.Default.CameraAlt, contentDescription = null, tint = Color.LightGray, modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("重新拍照", fontSize = 12.sp)
+                                    }
+                                }
+
+                                Button(
+                                    onClick = {
+                                        val bmp = capturedBitmap ?: return@Button
+                                        isProcessing = true
+                                        coroutineScope.launch {
+                                            val bW = bmp.width
+                                            val bH = bmp.height
+
+                                            // 1. 根據手指拖曳的歸一化座標截取整排手牌
+                                            val cropX = (cropRectNorm.left * bW).toInt().coerceIn(0, bW - 1)
+                                            val cropY = (cropRectNorm.top * bH).toInt().coerceIn(0, bH - 1)
+                                            val cropW = ((cropRectNorm.right - cropRectNorm.left) * bW).toInt().coerceIn(1, bW - cropX)
+                                            val cropH = ((cropRectNorm.bottom - cropRectNorm.top) * bH).toInt().coerceIn(1, bH - cropY)
+
+                                            val handRowBitmap = Bitmap.createBitmap(bmp, cropX, cropY, cropW, cropH)
+
+                                            // 2. 切割為 targetCount (16 或 17) 個單張牌特寫
+                                            val sliceW = cropW / targetCount
+                                            val recognizedList = mutableListOf<MahjongTile>()
+
+                                            for (pos in 1..targetCount) {
+                                                processingStatusText = "正在以 ${settingsRepo.modelName} 辨識第 $pos / $targetCount 張牌 (單牌特寫)..."
+                                                val sliceX = ((pos - 1) * sliceW).coerceIn(0, cropW - 1)
+                                                val actualSliceW = if (pos == targetCount) (cropW - sliceX) else sliceW
+                                                val singleTileBitmap = Bitmap.createBitmap(handRowBitmap, sliceX, 0, actualSliceW, cropH)
+
+                                                val tileResult = apiClient.recognizeSingleTile(
+                                                    baseUrl = settingsRepo.serverBaseUrl,
+                                                    apiKey = settingsRepo.apiKey,
+                                                    modelName = settingsRepo.modelName,
+                                                    bitmap = singleTileBitmap,
+                                                    position = pos,
+                                                    total = targetCount
+                                                )
+                                                val tile = tileResult.getOrNull() ?: MahjongTile.findById("wan_1")!!
+                                                recognizedList.add(tile)
+                                            }
+
+                                            isProcessing = false
+                                            recognizedTiles = recognizedList
+                                            capturedBitmap = null
+                                            Toast.makeText(context, "✅ 單牌特寫辨識完成！共 $targetCount 張，請校對", Toast.LENGTH_SHORT).show()
+                                        }
+                                    },
+                                    enabled = !isProcessing,
+                                    colors = ButtonDefaults.buttonColors(containerColor = AccentGold, contentColor = Color.Black),
+                                    shape = RoundedCornerShape(12.dp),
+                                    modifier = Modifier.fillMaxWidth().height(48.dp)
+                                ) {
+                                    Icon(Icons.Default.ContentCut, contentDescription = null, tint = Color.Black)
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("✂️ 確認裁切，開始單牌 AI 辨識", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    // ==================== 1. 相機拍攝 / 圖片選取 畫面 ====================
                 Column(
                     modifier = Modifier.fillMaxSize(),
                     verticalArrangement = Arrangement.SpaceBetween
@@ -422,7 +620,7 @@ fun PhotoScanScreen(
                                                         bitmap
                                                     }
                                                     image.close()
-                                                    analyzeBitmap(rotatedBitmap)
+                                                    capturedBitmap = rotatedBitmap
                                                 }
 
                                                 override fun onError(exception: ImageCaptureException) {
@@ -460,8 +658,9 @@ fun PhotoScanScreen(
                         }
                     }
                 }
-            } else {
-                // ==================== 2. 辨識結果校對與微調畫面 ====================
+            }
+        } else {
+            // ==================== 2. 辨識結果校對與微調畫面 ====================
                 val currentTiles = recognizedTiles ?: emptyList()
                 val currentCount = currentTiles.size
                 val isCountValid = currentCount == targetCount
