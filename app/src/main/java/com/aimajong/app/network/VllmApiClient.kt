@@ -507,7 +507,6 @@ class VllmApiClient {
                 add("tile_count", questionObj)
             }
 
-            val actualModel = if (!modelName.startsWith("vllm-sr/")) "vllm-sr/$modelName" else modelName
             val payload = JsonObject().apply {
                 addProperty("model", actualModel)
                 addProperty("state", "照片中展示了一整排台灣麻將手牌，正在檢測牌張數量。")
@@ -619,7 +618,6 @@ class VllmApiClient {
                 add("tile_pos_$position", questionObj)
             }
 
-            val actualModel = if (!modelName.startsWith("vllm-sr/")) "vllm-sr/$modelName" else modelName
             val payload = JsonObject().apply {
                 addProperty("model", actualModel)
                 addProperty("state", "裁切後的單張台灣麻將牌特寫照片（第 $position/$total 張），請辨識牌面。")
