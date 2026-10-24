@@ -61,15 +61,16 @@ data class GameState(
         discards.values.forEach { river ->
             count += river.count { it.id == tile.id }
         }
-        melds.forEach { m ->
+        val allMelds = melds + otherMelds.values.flatten()
+        allMelds.forEach { m ->
             count += m.tiles.count { it.id == tile.id }
-        }
-        otherMelds.values.forEach { meldList ->
-            meldList.forEach { m ->
-                count += m.tiles.count { it.id == tile.id }
+            // 若該副露包含取自他人牌河的觸發牌 (triggerTile)
+            // 該牌已在 discards 牌河中被計入，在此扣除 1 張避免重複計算 (Issue #2)
+            if (m.triggerTile?.id == tile.id) {
+                count -= 1
             }
         }
-        return count
+        return count.coerceAtLeast(0)
     }
 
     fun remainingCount(tile: MahjongTile): Int {
@@ -92,6 +93,16 @@ data class GameState(
             .groupBy { it.id }
             .filter { it.value.size >= 4 }
             .map { it.value.first() }
+    }
+
+    /**
+     * 檢查手牌中是否有已碰牌組的第 4 張牌，可執行補槓 (加槓/明槓)
+     */
+    fun getBuGangOptions(): List<MahjongTile> {
+        val pengTiles = melds.filter { it.type == ActionType.PENG }.mapNotNull { it.tiles.firstOrNull() }
+        return pengTiles.filter { pengTile ->
+            handTiles.any { it.id == pengTile.id }
+        }
     }
 
     fun getChiCombinations(targetTile: MahjongTile): List<Pair<MahjongTile, MahjongTile>> {

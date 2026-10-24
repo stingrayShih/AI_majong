@@ -254,7 +254,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
             val meld = Meld(
                 type = ActionType.GANG_AN,
                 tiles = listOf(tile, tile, tile, tile),
-                triggerTile = tile,
+                triggerTile = null,
                 targetSeat = PlayerSeat.SELF
             )
 
@@ -269,6 +269,54 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
             s.copy(
                 handTiles = newHand.sorted(),
                 melds = s.melds + meld,
+                phase = TurnPhase.AWAITING_DRAW,
+                justMeldedThisTurn = true,
+                history = s.history + record
+            )
+        }
+
+        triggerAIDecision()
+    }
+
+    /**
+     * 自己補槓 (碰牌後摸到第 4 張牌進行明槓/加槓)
+     */
+    fun onBuGang(tile: MahjongTile) {
+        val current = _gameState.value
+        if (current.isGameOver) return
+        if (current.currentTurnPlayer != PlayerSeat.SELF || current.phase != TurnPhase.AWAITING_DISCARD) return
+        val matchingMeld = current.melds.find { it.type == ActionType.PENG && it.tiles.firstOrNull()?.id == tile.id } ?: return
+        if (!current.handTiles.any { it.id == tile.id }) return
+
+        saveSnapshot()
+
+        _gameState.update { s ->
+            val newHand = s.handTiles.toMutableList()
+            val idx = newHand.indexOfFirst { it.id == tile.id }
+            if (idx != -1) newHand.removeAt(idx)
+
+            val updatedMelds = s.melds.map { m ->
+                if (m === matchingMeld) {
+                    m.copy(
+                        type = ActionType.GANG_BU,
+                        tiles = m.tiles + tile
+                    )
+                } else {
+                    m
+                }
+            }
+
+            val record = GameActionRecord(
+                turnNumber = s.currentTurn,
+                seat = PlayerSeat.SELF,
+                actionType = ActionType.GANG_BU,
+                tile = tile,
+                extraTiles = listOf(tile)
+            )
+
+            s.copy(
+                handTiles = newHand.sorted(),
+                melds = updatedMelds,
                 phase = TurnPhase.AWAITING_DRAW,
                 justMeldedThisTurn = true,
                 history = s.history + record
@@ -450,11 +498,18 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
             if (state.currentTurnPlayer == PlayerSeat.SELF && state.phase == TurnPhase.AWAITING_DISCARD) {
                 val hand = state.handTiles
                 val anGangOptions = state.getAnGangOptions()
+                val buGangOptions = state.getBuGangOptions()
                 val candidateChoices = mutableListOf<String>()
 
                 if (anGangOptions.isNotEmpty()) {
                     anGangOptions.forEach { tile ->
                         candidateChoices.add("暗槓 ${tile.name}")
+                    }
+                }
+
+                if (buGangOptions.isNotEmpty()) {
+                    buGangOptions.forEach { tile ->
+                        candidateChoices.add("補槓 ${tile.name}")
                     }
                 }
 
@@ -479,7 +534,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                     )
                 } else if (settingsRepo.useMockFallback) {
                     val mockChoices = candidateChoices.mapIndexed { index, opt ->
-                        val prob = if (opt.startsWith("暗槓")) 0.93f
+                        val prob = if (opt.startsWith("暗槓") || opt.startsWith("補槓")) 0.93f
                         else when (index) {
                             0 -> 0.45f
                             1 -> 0.25f

@@ -50,6 +50,7 @@ fun GameScreen(
     var showOtherMeldDialog by remember { mutableStateOf(false) }
     var showSelfMeldDialog by remember { mutableStateOf(false) }
     var showAnGangDialog by remember { mutableStateOf(false) }
+    var showBuGangDialog by remember { mutableStateOf(false) }
     var showHuDialog by remember { mutableStateOf(false) }
     var huInitialIsZiMo by remember { mutableStateOf(false) }
     var showChangeDealerDialog by remember { mutableStateOf(false) }
@@ -149,10 +150,26 @@ fun GameScreen(
                     }
                     Spacer(modifier = Modifier.height(4.dp))
 
-                    PlayerRiverAndMeldRow("上家", state.discards[PlayerSeat.SHANG_JIA] ?: emptyList(), state.otherMelds[PlayerSeat.SHANG_JIA] ?: emptyList(), isCurrent = state.currentTurnPlayer == PlayerSeat.SHANG_JIA)
-                    PlayerRiverAndMeldRow("對家", state.discards[PlayerSeat.DUI_JIA] ?: emptyList(), state.otherMelds[PlayerSeat.DUI_JIA] ?: emptyList(), isCurrent = state.currentTurnPlayer == PlayerSeat.DUI_JIA)
-                    PlayerRiverAndMeldRow("下家", state.discards[PlayerSeat.XIA_JIA] ?: emptyList(), state.otherMelds[PlayerSeat.XIA_JIA] ?: emptyList(), isCurrent = state.currentTurnPlayer == PlayerSeat.XIA_JIA)
-                    PlayerRiverAndMeldRow("我的打牌", state.discards[PlayerSeat.SELF] ?: emptyList(), state.melds, isCurrent = state.currentTurnPlayer == PlayerSeat.SELF)
+                    val allMelds = remember(state.melds, state.otherMelds) {
+                        state.melds + state.otherMelds.values.flatten()
+                    }
+                    val shangJiaClaimed = remember(allMelds) {
+                        allMelds.filter { it.targetSeat == PlayerSeat.SHANG_JIA }.mapNotNull { it.triggerTile?.id }.toSet()
+                    }
+                    val duiJiaClaimed = remember(allMelds) {
+                        allMelds.filter { it.targetSeat == PlayerSeat.DUI_JIA }.mapNotNull { it.triggerTile?.id }.toSet()
+                    }
+                    val xiaJiaClaimed = remember(allMelds) {
+                        allMelds.filter { it.targetSeat == PlayerSeat.XIA_JIA }.mapNotNull { it.triggerTile?.id }.toSet()
+                    }
+                    val selfClaimed = remember(allMelds) {
+                        allMelds.filter { it.targetSeat == PlayerSeat.SELF }.mapNotNull { it.triggerTile?.id }.toSet()
+                    }
+
+                    PlayerRiverAndMeldRow("上家", state.discards[PlayerSeat.SHANG_JIA] ?: emptyList(), state.otherMelds[PlayerSeat.SHANG_JIA] ?: emptyList(), claimedTileIds = shangJiaClaimed, isCurrent = state.currentTurnPlayer == PlayerSeat.SHANG_JIA)
+                    PlayerRiverAndMeldRow("對家", state.discards[PlayerSeat.DUI_JIA] ?: emptyList(), state.otherMelds[PlayerSeat.DUI_JIA] ?: emptyList(), claimedTileIds = duiJiaClaimed, isCurrent = state.currentTurnPlayer == PlayerSeat.DUI_JIA)
+                    PlayerRiverAndMeldRow("下家", state.discards[PlayerSeat.XIA_JIA] ?: emptyList(), state.otherMelds[PlayerSeat.XIA_JIA] ?: emptyList(), claimedTileIds = xiaJiaClaimed, isCurrent = state.currentTurnPlayer == PlayerSeat.XIA_JIA)
+                    PlayerRiverAndMeldRow("我的打牌", state.discards[PlayerSeat.SELF] ?: emptyList(), state.melds, claimedTileIds = selfClaimed, isCurrent = state.currentTurnPlayer == PlayerSeat.SELF)
                 }
             }
 
@@ -333,6 +350,7 @@ fun GameScreen(
                 onDrawClicked = { showTilePickerForDraw = true },
                 onSelfMeldClicked = { showSelfMeldDialog = true },
                 onAnGangClicked = { showAnGangDialog = true },
+                onBuGangClicked = { showBuGangDialog = true },
                 onOtherTurnClicked = { showTilePickerForOtherTurn = true },
                 onOtherMeldClicked = { showOtherMeldDialog = true },
                 onPassCallClicked = { viewModel.onPassCall() },
@@ -389,6 +407,18 @@ fun GameScreen(
             onTileSelected = { tile ->
                 viewModel.onAnGang(tile)
                 showAnGangDialog = false
+            }
+        )
+    }
+
+    // 補槓選擇 (碰牌後明槓/加槓)
+    if (showBuGangDialog) {
+        BuGangDialog(
+            buGangTiles = state.getBuGangOptions(),
+            onDismiss = { showBuGangDialog = false },
+            onTileSelected = { tile ->
+                viewModel.onBuGang(tile)
+                showBuGangDialog = false
             }
         )
     }
@@ -464,7 +494,8 @@ fun TurnStatusBanner(state: GameState) {
         }
         state.currentTurnPlayer == PlayerSeat.SELF -> {
             if (state.phase == TurnPhase.AWAITING_DRAW) {
-                Triple(AccentGoldDark, Color.Black, "🟢 輪到你摸牌，請點擊下方【摸牌】")
+                val msg = if (state.justMeldedThisTurn) "🟢 槓牌完成，請點擊下方【摸牌】進行槓尾補牌" else "🟢 輪到你摸牌，請點擊下方【摸牌】"
+                Triple(AccentGoldDark, Color.Black, msg)
             } else {
                 Triple(Color(0xFF2E7D32), Color.White, "🟢 輪到你出牌，請直接點選手牌打出")
             }
@@ -496,6 +527,7 @@ fun DynamicActionBar(
     onDrawClicked: () -> Unit,
     onSelfMeldClicked: () -> Unit,
     onAnGangClicked: () -> Unit,
+    onBuGangClicked: () -> Unit,
     onOtherTurnClicked: () -> Unit,
     onOtherMeldClicked: () -> Unit,
     onPassCallClicked: () -> Unit,
@@ -602,28 +634,40 @@ fun DynamicActionBar(
 
         state.canSelfDiscard -> {
             val anGangList = state.getAnGangOptions()
+            val buGangList = state.getBuGangOptions()
             val canHuNow = !state.justMeldedThisTurn
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 if (anGangList.isNotEmpty()) {
                     Button(
                         onClick = onAnGangClicked,
-                        modifier = Modifier.weight(1f).heightIn(min = 46.dp),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
+                        modifier = Modifier.weight(1f).heightIn(min = 44.dp),
+                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6A1B9A))
                     ) {
-                        Text("暗槓 (${anGangList.first().name})", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp, textAlign = TextAlign.Center)
+                        Text("暗槓 (${anGangList.first().name})", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp, textAlign = TextAlign.Center)
+                    }
+                }
+
+                if (buGangList.isNotEmpty()) {
+                    Button(
+                        onClick = onBuGangClicked,
+                        modifier = Modifier.weight(1f).heightIn(min = 44.dp),
+                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00897B))
+                    ) {
+                        Text("補槓 (${buGangList.first().name})", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp, textAlign = TextAlign.Center)
                     }
                 }
 
                 if (canHuNow) {
                     Button(
                         onClick = onZiMoClicked,
-                        modifier = Modifier.weight(1f).heightIn(min = 46.dp),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
+                        modifier = Modifier.weight(1f).heightIn(min = 44.dp),
+                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = TileWanRed)
                     ) {
                         Text("自摸胡牌", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp, textAlign = TextAlign.Center)
@@ -666,7 +710,13 @@ fun DynamicActionBar(
  * 牌河與副露明牌顯示列
  */
 @Composable
-fun PlayerRiverAndMeldRow(seatName: String, discards: List<MahjongTile>, melds: List<Meld>, isCurrent: Boolean = false) {
+fun PlayerRiverAndMeldRow(
+    seatName: String,
+    discards: List<MahjongTile>,
+    melds: List<Meld>,
+    claimedTileIds: Set<String> = emptySet(),
+    isCurrent: Boolean = false
+) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
@@ -712,7 +762,13 @@ fun PlayerRiverAndMeldRow(seatName: String, discards: List<MahjongTile>, melds: 
                 Text("尚無打牌", color = Color.Gray, fontSize = 10.sp)
             } else {
                 discards.takeLast(8).forEach { tile ->
-                    MahjongTileView(tile = tile, width = 20.dp, height = 30.dp)
+                    val isClaimed = tile.id in claimedTileIds
+                    MahjongTileView(
+                        tile = tile,
+                        width = 20.dp,
+                        height = 30.dp,
+                        modifier = if (isClaimed) Modifier.alpha(0.4f) else Modifier
+                    )
                 }
             }
         }
@@ -859,6 +915,38 @@ fun AnGangDialog(
                         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
                     ) {
                         Text("暗槓 4 張 [${tile.name}] (槓尾補牌)", color = Color.White)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+                TextButton(onClick = onDismiss) { Text("取消", color = TextMuted) }
+            }
+        }
+    }
+}
+
+/**
+ * 補槓對話框 (碰牌後明槓/加槓)
+ */
+@Composable
+fun BuGangDialog(
+    buGangTiles: List<MahjongTile>,
+    onDismiss: () -> Unit,
+    onTileSelected: (MahjongTile) -> Unit
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(shape = RoundedCornerShape(16.dp), color = CardBackground, modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("選擇補槓牌面 (加槓/明槓)", color = AccentGold, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(12.dp))
+
+                buGangTiles.forEach { tile ->
+                    Button(
+                        onClick = { onTileSelected(tile) },
+                        colors = ButtonDefaults.buttonColors(containerColor = AccentGold),
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                    ) {
+                        Text("補槓 [${tile.name}] (碰牌組升級為槓牌)", color = Color.Black)
                     }
                 }
 
