@@ -124,6 +124,8 @@ data class GameState(
     }
 
     fun getAnGangOptions(): List<MahjongTile> {
+        // 吃碰後當回合只能出牌，不可暗槓
+        if (justMeldedThisTurn && currentTurnPlayer == PlayerSeat.SELF) return emptyList()
         return handTiles
             .groupBy { it.id }
             .filter { it.value.size >= 4 }
@@ -134,6 +136,8 @@ data class GameState(
      * 檢查手牌中是否有已碰牌組的第 4 張牌，可執行補槓 (加槓/明槓)
      */
     fun getBuGangOptions(): List<MahjongTile> {
+        // 吃碰後當回合只能出牌，不可補槓
+        if (justMeldedThisTurn && currentTurnPlayer == PlayerSeat.SELF) return emptyList()
         val pengTiles = melds.filter { it.type == ActionType.PENG }.mapNotNull { it.tiles.firstOrNull() }
         return pengTiles.filter { pengTile ->
             handTiles.any { it.id == pengTile.id }

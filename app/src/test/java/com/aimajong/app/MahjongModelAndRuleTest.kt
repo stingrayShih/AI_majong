@@ -46,6 +46,10 @@ class MahjongModelAndRuleTest {
         assertEquals(1, anGangOptions.size)
         assertEquals("east", anGangOptions[0].id)
 
+        // 若剛吃碰副露當回合 (justMeldedThisTurn = true)，規則禁止暗槓
+        val stateJustMelded = state.copy(justMeldedThisTurn = true)
+        assertTrue(stateJustMelded.getAnGangOptions().isEmpty())
+
         // 上家打出三萬，驗證能吃 [一萬, 二萬]
         val stateWithDiscard = state.copy(
             lastDiscard = Pair(PlayerSeat.SHANG_JIA, wan3),
@@ -97,6 +101,10 @@ class MahjongModelAndRuleTest {
         val buGangOptions = state.getBuGangOptions()
         assertEquals(1, buGangOptions.size)
         assertEquals("zhong", buGangOptions[0].id)
+
+        // 若剛吃碰副露當回合 (justMeldedThisTurn = true)，規則禁止補槓
+        val stateJustMelded = state.copy(justMeldedThisTurn = true)
+        assertTrue(stateJustMelded.getBuGangOptions().isEmpty())
     }
 
     @Test

@@ -255,6 +255,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
     fun onAnGang(tile: MahjongTile) {
         val current = _gameState.value
         if (current.currentTurnPlayer != PlayerSeat.SELF || current.phase != TurnPhase.AWAITING_DISCARD) return
+        if (current.justMeldedThisTurn) return
         if (current.handTiles.count { it.id == tile.id } < 4) return
 
         saveSnapshot()
@@ -300,6 +301,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         val current = _gameState.value
         if (current.isGameOver) return
         if (current.currentTurnPlayer != PlayerSeat.SELF || current.phase != TurnPhase.AWAITING_DISCARD) return
+        if (current.justMeldedThisTurn) return
         val matchingMeld = current.melds.find { it.type == ActionType.PENG && it.tiles.firstOrNull()?.id == tile.id } ?: return
         if (!current.handTiles.any { it.id == tile.id }) return
 
