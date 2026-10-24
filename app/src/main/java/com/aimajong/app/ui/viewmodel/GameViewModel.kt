@@ -482,7 +482,8 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
 
-                val candidates = hand.filter { !it.isFlower }.distinctBy { it.id }.takeLast(4)
+                // 手牌中所有非花牌的牌型皆為可打出的候選選項
+                val candidates = hand.filter { !it.isFlower }.distinctBy { it.id }
                 candidates.forEach { tile ->
                     candidateChoices.add("打出 ${tile.name}")
                 }
@@ -498,16 +499,16 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                 if (apiResult.isSuccess) {
                     val res = apiResult.getOrNull()!!
                     _aiDecision.value = res.copy(
-                        explanationNote = "vLLM ${settingsRepo.modelName} (27B) 決策推論"
+                        explanationNote = "vLLM ${settingsRepo.modelName} 決策推論"
                     )
                 } else if (settingsRepo.useMockFallback) {
                     val mockChoices = candidateChoices.mapIndexed { index, opt ->
                         val prob = if (opt.startsWith("暗槓")) 0.93f
                         else when (index) {
-                            0 -> 0.66f
-                            1 -> 0.21f
-                            2 -> 0.09f
-                            else -> 0.04f
+                            0 -> 0.45f
+                            1 -> 0.25f
+                            2 -> 0.15f
+                            else -> 0.15f / (candidateChoices.size - 3).coerceAtLeast(1)
                         }
                         DecisionChoiceProbability(opt, prob)
                     }.sortedByDescending { it.probability }

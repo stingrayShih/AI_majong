@@ -54,6 +54,7 @@ fun GameScreen(
     var huInitialIsZiMo by remember { mutableStateOf(false) }
     var showChangeDealerDialog by remember { mutableStateOf(false) }
     var showDebugDialog by remember { mutableStateOf(false) }
+    var showAllAiOptions by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -222,7 +223,13 @@ fun GameScreen(
 
                         Spacer(modifier = Modifier.height(4.dp))
 
-                        aiDecision!!.optionsProbability.take(3).forEach { option ->
+                        val displayedOptions = if (showAllAiOptions) {
+                            aiDecision!!.optionsProbability
+                        } else {
+                            aiDecision!!.optionsProbability.take(3)
+                        }
+
+                        displayedOptions.forEach { option ->
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier.fillMaxWidth().padding(vertical = 1.dp)
@@ -250,6 +257,18 @@ fun GameScreen(
                                     fontWeight = FontWeight.Bold
                                 )
                             }
+                        }
+
+                        if (aiDecision!!.optionsProbability.size > 3) {
+                            Text(
+                                text = if (showAllAiOptions) "▲ 收起其餘手牌選項" else "▼ 展開全部手牌選項 (共 ${aiDecision!!.optionsProbability.size} 種)",
+                                color = AccentGold,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier
+                                    .padding(top = 4.dp)
+                                    .clickable { showAllAiOptions = !showAllAiOptions }
+                            )
                         }
                     }
                 }
