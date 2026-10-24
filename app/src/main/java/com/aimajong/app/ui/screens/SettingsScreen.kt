@@ -17,6 +17,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -33,6 +34,7 @@ fun SettingsScreen(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
+    val keyboardController = LocalSoftwareKeyboardController.current
     val coroutineScope = rememberCoroutineScope()
 
     var baseUrl by remember { mutableStateOf(settingsRepo.serverBaseUrl) }
@@ -42,6 +44,7 @@ fun SettingsScreen(
 
     var isTestingConnection by remember { mutableStateOf(false) }
     var connectionTestResult by remember { mutableStateOf<Pair<Boolean, String>?>(null) }
+    var showResultDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -204,37 +207,54 @@ fun SettingsScreen(
                 }
             }
 
-            // 測試連線按鈕與結果
+            // 測試連線按鈕
             Button(
                 onClick = {
+                    keyboardController?.hide()
+                    val targetUrl = baseUrl.trim()
+                    if (targetUrl.isBlank()) {
+                        Toast.makeText(context, "請先輸入 API Base URL！", Toast.LENGTH_SHORT).show()
+                        return@Button
+                    }
                     isTestingConnection = true
                     connectionTestResult = null
+                    Toast.makeText(context, "⚡ 正在向伺服器發送測試請求，請稍候...", Toast.LENGTH_SHORT).show()
+
                     coroutineScope.launch {
-                        val result = apiClient.testConnection(baseUrl, apiKey)
+                        val result = apiClient.testConnection(targetUrl, apiKey.trim())
                         isTestingConnection = false
                         result.onSuccess { (msg, latency) ->
-                            connectionTestResult = Pair(true, "$msg (延遲: ${latency}ms)")
+                            connectionTestResult = Pair(true, "$msg\n(回應延遲: ${latency}ms)")
+                            showResultDialog = true
+                            Toast.makeText(context, "✅ $msg (${latency}ms)", Toast.LENGTH_LONG).show()
                         }.onFailure { err ->
-                            connectionTestResult = Pair(false, err.message ?: "連線失敗")
+                            val errMsg = err.message ?: "無法建立連線"
+                            connectionTestResult = Pair(false, errMsg)
+                            showResultDialog = true
+                            Toast.makeText(context, "❌ 連線失敗: $errMsg", Toast.LENGTH_LONG).show()
                         }
                     }
                 },
-                enabled = !isTestingConnection && baseUrl.isNotBlank(),
-                colors = ButtonDefaults.buttonColors(containerColor = MahjongGreenDark),
+                enabled = !isTestingConnection,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = AccentGold,
+                    disabledContainerColor = Color.Gray
+                ),
+                shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.fillMaxWidth().height(48.dp)
             ) {
                 if (isTestingConnection) {
-                    CircularProgressIndicator(color = AccentGold, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                    CircularProgressIndicator(color = Color.Black, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("連線測試中...", color = AccentGold)
+                    Text("連線測試中 (請稍候)...", color = Color.Black, fontWeight = FontWeight.Bold)
                 } else {
-                    Icon(Icons.Default.Speed, contentDescription = null, tint = AccentGold)
+                    Icon(Icons.Default.Speed, contentDescription = null, tint = Color.Black)
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("⚡ 測試連線 (Ping Server)", color = AccentGold, fontWeight = FontWeight.Bold)
+                    Text("⚡ 測試連線 (Ping Server)", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 15.sp)
                 }
             }
 
-            // 測試結果展示
+            // 測試結果展示卡片 (保留於下方)
             connectionTestResult?.let { (isSuccess, message) ->
                 Surface(
                     shape = RoundedCornerShape(8.dp),
@@ -259,19 +279,62 @@ fun SettingsScreen(
             // 儲存設定按鈕
             Button(
                 onClick = {
-                    settingsRepo.serverBaseUrl = baseUrl
-                    settingsRepo.apiKey = apiKey
-                    settingsRepo.modelName = modelName
+                    keyboardController?.hide()
+                    settingsRepo.serverBaseUrl = baseUrl.trim()
+                    settingsRepo.apiKey = apiKey.trim()
+                    settingsRepo.modelName = modelName.trim()
                     settingsRepo.useMockFallback = useMockFallback
-                    Toast.makeText(context, "設定已保存！", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "設定已保存並套用！", Toast.LENGTH_SHORT).show()
                     onBack()
                 },
-                colors = ButtonDefaults.buttonColors(containerColor = AccentGold),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.fillMaxWidth().height(50.dp)
             ) {
-                Text("💾 儲存並套用設定", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                Text("💾 儲存並套用設定", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
             }
         }
+    }
+
+    // 彈出式測試結果視窗 (保證不被鍵盤遮擋或滑動忽略)
+    if (showResultDialog && connectionTestResult != null) {
+        val (isSuccess, message) = connectionTestResult!!
+        AlertDialog(
+            onDismissRequest = { showResultDialog = false },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = if (isSuccess) Icons.Default.CheckCircle else Icons.Default.Error,
+                        contentDescription = null,
+                        tint = if (isSuccess) Color(0xFF4CAF50) else Color(0xFFEF5350),
+                        modifier = Modifier.size(28.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        if (isSuccess) "連線測試成功" else "連線測試失敗",
+                        color = TextLight,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 17.sp
+                    )
+                }
+            },
+            text = {
+                Text(
+                    text = message,
+                    color = TextLight,
+                    fontSize = 14.sp,
+                    lineHeight = 20.sp
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = { showResultDialog = false },
+                    colors = ButtonDefaults.buttonColors(containerColor = AccentGold)
+                ) {
+                    Text("確定", color = Color.Black, fontWeight = FontWeight.Bold)
+                }
+            },
+            containerColor = CardBackground
+        )
     }
 }

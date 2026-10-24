@@ -30,33 +30,52 @@ class VllmApiClient {
     suspend fun testConnection(baseUrl: String, apiKey: String): Result<Pair<String, Long>> =
         withContext(Dispatchers.IO) {
             try {
-                val cleanUrl = baseUrl.trimEnd('/')
-                val url = "$cleanUrl/v1/models"
-
-                val requestBuilder = Request.Builder()
-                    .url(url)
-                    .get()
-
-                if (apiKey.isNotBlank()) {
-                    requestBuilder.addHeader("Authorization", "Bearer $apiKey")
+                var cleanUrl = baseUrl.trim()
+                if (cleanUrl.isEmpty()) {
+                    return@withContext Result.failure(Exception("網址不能為空，請輸入 API Base URL"))
                 }
+                if (!cleanUrl.startsWith("http://") && !cleanUrl.startsWith("https://")) {
+                    cleanUrl = "https://$cleanUrl"
+                }
+                cleanUrl = cleanUrl.trimEnd('/')
 
-                val startTime = System.currentTimeMillis()
-                client.newCall(requestBuilder.build()).execute().use { response ->
-                    val latency = System.currentTimeMillis() - startTime
-                    when (response.code) {
-                        200 -> Result.success(Pair("官方雲端連線成功！(延遲 ${latency}ms)", latency))
-                        401 -> Result.failure(Exception("認證失敗 (HTTP 401): 請檢查 API Key 是否正確填寫"))
-                        403 -> Result.failure(Exception("無權限 (HTTP 403): API Key 權限不足或已過期"))
-                        404 -> {
-                            // 若官方未開放 GET /v1/models，嘗試以 HEAD 或空請求測試主網域
-                            Result.success(Pair("伺服器連線正常 (HTTP 404, 服務在線)", latency))
+                // 優先測試 /v1/models，若無則備援測試 /v1/systemone 或首頁
+                val endpointsToTry = listOf(
+                    "$cleanUrl/v1/models",
+                    "$cleanUrl/v1/systemone",
+                    cleanUrl
+                )
+
+                var lastException: Exception? = null
+                for (url in endpointsToTry) {
+                    try {
+                        val requestBuilder = Request.Builder().url(url)
+                        if (apiKey.isNotBlank()) {
+                            requestBuilder.addHeader("Authorization", "Bearer ${apiKey.trim()}")
                         }
-                        else -> Result.failure(Exception("伺服器回應 HTTP ${response.code}: ${response.message}"))
+                        requestBuilder.get()
+
+                        val startTime = System.currentTimeMillis()
+                        client.newCall(requestBuilder.build()).execute().use { response ->
+                            val latency = (System.currentTimeMillis() - startTime).coerceAtLeast(1)
+                            return@withContext when (response.code) {
+                                in 200..299 -> Result.success(Pair("連線成功！(HTTP ${response.code})", latency))
+                                401 -> Result.success(Pair("伺服器在線！(HTTP 401: 需填寫有效 API Key)", latency))
+                                403 -> Result.success(Pair("伺服器在線！(HTTP 403: API Key 權限不足)", latency))
+                                405 -> Result.success(Pair("伺服器在線！(HTTP 405: 服務端點活躍)", latency))
+                                400, 422 -> Result.success(Pair("伺服器在線！(HTTP ${response.code})", latency))
+                                404 -> Result.success(Pair("伺服器在線！(HTTP 404: 網路通暢)", latency))
+                                else -> Result.failure(Exception("伺服器回應 HTTP ${response.code}: ${response.message}"))
+                            }
+                        }
+                    } catch (e: Exception) {
+                        lastException = e
                     }
                 }
+
+                Result.failure(lastException ?: Exception("無法連線至 $baseUrl"))
             } catch (e: Exception) {
-                Result.failure(Exception("無法連線至 $baseUrl: ${e.localizedMessage ?: e.message}"))
+                Result.failure(Exception("連線失敗: ${e.localizedMessage ?: e.message}"))
             }
         }
 
@@ -76,7 +95,11 @@ class VllmApiClient {
         }
 
         try {
-            val cleanUrl = baseUrl.trimEnd('/')
+            var cleanUrl = baseUrl.trim()
+            if (!cleanUrl.startsWith("http://") && !cleanUrl.startsWith("https://")) {
+                cleanUrl = "https://$cleanUrl"
+            }
+            cleanUrl = cleanUrl.trimEnd('/')
             val endpoint = "$cleanUrl/v1/systemone"
 
             // 組裝牌局現況提示詞
