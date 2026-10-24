@@ -83,7 +83,7 @@ fun SettingsScreen(
                     Text(
                         "• 預設連線官方端點: https://decision.vllm-sr.ai\n" +
                                 "• API Key 格式: sk-vsr-... (可於官網取得)\n" +
-                                "• 無需自行架設伺服器，填入 API Key 即可使用 d3-flash 即時決策。\n" +
+                                "• 官方模型規格：d3 (27B 旗艦)、d3-flash (8.4B)、d3-mini (4.5B)。\n" +
                                 "• 如無 API Key，開啟下方「離線備援模式」可體驗本地規則引擎。",
                         color = TextMuted,
                         fontSize = 12.sp,
@@ -136,7 +136,7 @@ fun SettingsScreen(
                         OutlinedButton(
                             onClick = { 
                                 baseUrl = "https://decision.vllm-sr.ai"
-                                modelName = "d3-turbo"
+                                modelName = "d3"
                             },
                             modifier = Modifier.weight(1f),
                             contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp)
@@ -160,7 +160,7 @@ fun SettingsScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text("模型名稱 (Model Name)：", color = AccentGold, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                        Text("預設 27B 旗艦", color = AccentGold, fontSize = 11.sp)
+                        Text("官方 Decision 3.0", color = AccentGold, fontSize = 11.sp)
                     }
                     Spacer(modifier = Modifier.height(4.dp))
                     OutlinedTextField(
@@ -178,24 +178,33 @@ fun SettingsScreen(
 
                     Spacer(modifier = Modifier.height(6.dp))
 
-                    // 快速選擇常用模型
+                    // 快速選擇常用官方模型
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         FilterChip(
-                            selected = modelName.contains("d3-turbo"),
-                            onClick = { modelName = "d3-turbo" },
-                            label = { Text("⚡ d3-turbo (27B 推薦)", fontSize = 11.sp) },
+                            selected = modelName == "d3" || modelName == "vllm-sr/d3",
+                            onClick = { modelName = "d3" },
+                            label = { Text("⚡ d3 (27B 旗艦)", fontSize = 10.sp) },
                             colors = FilterChipDefaults.filterChipColors(
                                 selectedContainerColor = AccentGold,
                                 selectedLabelColor = Color.Black
                             )
                         )
                         FilterChip(
-                            selected = modelName.contains("d3-flash"),
+                            selected = modelName == "d3-flash" || modelName == "vllm-sr/d3-flash",
                             onClick = { modelName = "d3-flash" },
-                            label = { Text("d3-flash (9B 輕量)", fontSize = 11.sp) },
+                            label = { Text("d3-flash (8.4B)", fontSize = 10.sp) },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = AccentGold,
+                                selectedLabelColor = Color.Black
+                            )
+                        )
+                        FilterChip(
+                            selected = modelName == "d3-mini" || modelName == "vllm-sr/d3-mini",
+                            onClick = { modelName = "d3-mini" },
+                            label = { Text("d3-mini (4.5B)", fontSize = 10.sp) },
                             colors = FilterChipDefaults.filterChipColors(
                                 selectedContainerColor = AccentGold,
                                 selectedLabelColor = Color.Black

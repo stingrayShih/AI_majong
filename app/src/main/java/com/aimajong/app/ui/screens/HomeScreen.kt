@@ -132,7 +132,7 @@ fun HomeScreen(
                 // 功能 4: 伺服器設定
                 MenuActionCard(
                     title = "AI 伺服器與模型設定",
-                    subtitle = "配置 vLLM d3-flash URL、API Key 與連線測試",
+                    subtitle = "配置 vLLM d3 / d3-flash URL、API Key 與連線測試",
                     icon = Icons.Default.Settings,
                     onClick = onOpenSettings
                 )

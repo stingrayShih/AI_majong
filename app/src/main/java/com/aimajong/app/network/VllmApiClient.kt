@@ -83,7 +83,7 @@ class VllmApiClient {
      * 2. 驗證 API Key 是否通過授權 (HTTP 401/403 攔截)
      * 3. 實際發送 Decision 請求驗證指定模型 (modelName) 是否在線且能正常運作
      */
-    suspend fun testConnection(baseUrl: String, apiKey: String, modelName: String = "d3-turbo"): Result<Pair<String, Long>> =
+    suspend fun testConnection(baseUrl: String, apiKey: String, modelName: String = "d3"): Result<Pair<String, Long>> =
         withContext(Dispatchers.IO) {
             try {
                 var cleanUrl = baseUrl.trim()
