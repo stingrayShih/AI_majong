@@ -136,7 +136,7 @@ fun SettingsScreen(
                         OutlinedButton(
                             onClick = { 
                                 baseUrl = "https://decision.vllm-sr.ai"
-                                modelName = "d3-flash"
+                                modelName = "d3-turbo"
                             },
                             modifier = Modifier.weight(1f),
                             contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp)
@@ -154,7 +154,14 @@ fun SettingsScreen(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(14.dp)) {
-                    Text("模型名稱 (Model Name)：", color = AccentGold, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("模型名稱 (Model Name)：", color = AccentGold, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        Text("預設 27B 旗艦", color = AccentGold, fontSize = 11.sp)
+                    }
                     Spacer(modifier = Modifier.height(4.dp))
                     OutlinedTextField(
                         value = modelName,
@@ -168,6 +175,33 @@ fun SettingsScreen(
                         ),
                         singleLine = true
                     )
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    // 快速選擇常用模型
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        FilterChip(
+                            selected = modelName.contains("d3-turbo"),
+                            onClick = { modelName = "d3-turbo" },
+                            label = { Text("⚡ d3-turbo (27B 推薦)", fontSize = 11.sp) },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = AccentGold,
+                                selectedLabelColor = Color.Black
+                            )
+                        )
+                        FilterChip(
+                            selected = modelName.contains("d3-flash"),
+                            onClick = { modelName = "d3-flash" },
+                            label = { Text("d3-flash (9B 輕量)", fontSize = 11.sp) },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = AccentGold,
+                                selectedLabelColor = Color.Black
+                            )
+                        )
+                    }
 
                     Spacer(modifier = Modifier.height(10.dp))
 

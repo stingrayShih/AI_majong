@@ -78,7 +78,7 @@ fun PhotoScanScreen(
 
     // 狀態變數
     var isProcessing by remember { mutableStateOf(false) }
-    var processingStatusText by remember { mutableStateOf("vLLM d3-flash 視覺辨識分析中...") }
+    var processingStatusText by remember { mutableStateOf("vLLM ${settingsRepo.modelName} (27B) 視覺辨識分析中...") }
 
     // 辨識結果手牌列表 (進入校對微調模式)
     var recognizedTiles by remember { mutableStateOf<List<MahjongTile>?>(null) }

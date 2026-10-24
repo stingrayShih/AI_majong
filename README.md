@@ -1,7 +1,7 @@
 # 🀄 AI 台灣麻將實戰策略輔助工具 (AI_majong)
 
 一款專為**台灣 16 張麻將**（含花牌）設計的 Android 實戰策略輔助 App。
-直接串接 **vLLM Decision 3.0 (`d3-flash`) 官方雲端 API**（`https://decision.vllm-sr.ai`，無需自架伺服器），即時分析手牌效能、防守向聽與鳴牌勝率機率分佈。
+直接串接 **vLLM Decision 3.0 (`d3-turbo` 27B) 官方雲端 API**（`https://decision.vllm-sr.ai`，無需自架伺服器），即時分析手牌效能、防守向聽與鳴牌勝率機率分佈。
 
 ---
 
@@ -25,7 +25,7 @@
 - **↩ 復原上一步 (Undo)**：頂部導航列支援隨時回滾操作。
 - **對局記憶與中斷恢復**：首頁常駐「▶ 繼續進行中的牌局」大卡片，搭配 `rememberSaveable` 跨 App 切換不中斷。
 - **相機拍照辨識起手牌 (CameraX)**：實裝拍照取景、水平導引框、相簿匯入與拍後手牌校對微調介面。
-- **vLLM D3 官方雲端 API**：連線官方雲端端點 (`https://decision.vllm-sr.ai/v1/systemone`)，無需自架伺服器，輸入 API Key (`sk-vsr-...`) 即可使用！
+- **vLLM D3 官方雲端 API**：連線官方雲端端點 (`https://decision.vllm-sr.ai/v1/systemone`)，預設採用 **27B 旗艦模型 `d3-turbo`**（亦可選用 9B `d3-flash`），具備更高之視覺與決策辨識精準度！無需自架伺服器，輸入 API Key (`sk-vsr-...`) 即可使用！
 
 ---
 

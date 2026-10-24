@@ -438,7 +438,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                 if (apiResult.isSuccess) {
                     val res = apiResult.getOrNull()!!
                     _aiDecision.value = res.copy(
-                        explanationNote = "vLLM d3-flash 真實推論 (端點: ${settingsRepo.serverBaseUrl})"
+                        explanationNote = "vLLM ${settingsRepo.modelName} (27B) 決策推論"
                     )
                 } else if (settingsRepo.useMockFallback) {
                     // 本地智能備援
@@ -498,7 +498,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                 if (apiResult.isSuccess) {
                     val res = apiResult.getOrNull()!!
                     _aiDecision.value = res.copy(
-                        explanationNote = "vLLM d3-flash 真實推論 (端點: ${settingsRepo.serverBaseUrl})"
+                        explanationNote = "vLLM ${settingsRepo.modelName} (27B) 決策推論"
                     )
                 } else if (settingsRepo.useMockFallback) {
                     val mockChoices = candidateChoices.mapIndexed { index, opt ->
