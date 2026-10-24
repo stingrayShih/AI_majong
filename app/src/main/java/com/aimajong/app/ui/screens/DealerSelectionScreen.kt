@@ -1,5 +1,6 @@
 package com.aimajong.app.ui.screens
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.text.style.TextAlign
