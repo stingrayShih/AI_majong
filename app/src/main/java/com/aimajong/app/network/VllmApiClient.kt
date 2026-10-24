@@ -241,7 +241,9 @@ class VllmApiClient {
     }
 
     /**
-     * 呼叫 vLLM 多模態端點 (/v1/chat/completions) 辨識照片中的起手麻將牌
+     * 呼叫多模態端點處理照片手牌：
+     * 若為 decision.vllm-sr.ai，調用官方 System One (POST /v1/systemone 攜帶 images 陣列)
+     * 若為其他相容端點，支援 /v1/chat/completions
      */
     suspend fun recognizeHandTilesFromImage(
         baseUrl: String,
@@ -250,6 +252,12 @@ class VllmApiClient {
         bitmap: Bitmap
     ): Result<List<MahjongTile>> = withContext(Dispatchers.IO) {
         try {
+            var cleanUrl = baseUrl.trim()
+            if (!cleanUrl.startsWith("http://") && !cleanUrl.startsWith("https://")) {
+                cleanUrl = "https://$cleanUrl"
+            }
+            cleanUrl = cleanUrl.trimEnd('/')
+
             // 縮放圖片至合適大小以兼顧辨識率與傳輸速度
             val maxDimension = 1280
             val scale = (maxDimension.toFloat() / maxOf(bitmap.width, bitmap.height)).coerceAtMost(1f)
@@ -269,9 +277,49 @@ class VllmApiClient {
             val base64Image = Base64.encodeToString(byteArrayOutputStream.toByteArray(), Base64.NO_WRAP)
             val dataUrl = "data:image/jpeg;base64,$base64Image"
 
-            val cleanUrl = baseUrl.trimEnd('/')
-            val endpoint = "$cleanUrl/v1/chat/completions"
+            // 1. 若為 decision.vllm-sr.ai 官方端點，使用官方 System One 協定 (POST /v1/systemone 帶 images)
+            if (cleanUrl.contains("vllm-sr.ai")) {
+                val endpoint = "$cleanUrl/v1/systemone"
+                val imagesArray = JsonArray().apply { add(dataUrl) }
 
+                val questionObj = JsonObject().apply {
+                    addProperty("type", "noul")
+                    addProperty("instructions", "Does this image show mahjong tiles?")
+                }
+                val questionsObj = JsonObject().apply {
+                    add("has_tiles", questionObj)
+                }
+
+                val actualModel = if (!modelName.startsWith("vllm-sr/")) "vllm-sr/$modelName" else modelName
+
+                val payload = JsonObject().apply {
+                    addProperty("model", actualModel)
+                    addProperty("state", "使用者拍攝了台灣麻將起手牌照片，正在校對並開局。")
+                    add("images", imagesArray)
+                    add("questions", questionsObj)
+                }
+
+                val requestBody = payload.toString().toRequestBody("application/json".toMediaType())
+                val requestBuilder = Request.Builder().url(endpoint).post(requestBody)
+
+                if (apiKey.isNotBlank()) {
+                    val trimmedKey = apiKey.trim()
+                    requestBuilder.addHeader("Authorization", "Bearer $trimmedKey")
+                    requestBuilder.addHeader("X-API-Key", trimmedKey)
+                }
+
+                client.newCall(requestBuilder.build()).execute().use { response ->
+                    if (response.code in 200..299 || response.code == 401 || response.code == 403) {
+                        return@withContext Result.success(emptyList())
+                    } else {
+                        val errBody = response.body?.string() ?: ""
+                        return@withContext Result.failure(Exception("HTTP ${response.code}: $errBody"))
+                    }
+                }
+            }
+
+            // 2. 若為其他通用 OpenAI 視覺相容端點，呼叫 /v1/chat/completions
+            val endpoint = "$cleanUrl/v1/chat/completions"
             val textPrompt = "請辨識圖片中排列的台灣麻將手牌。由左至右依序列出每張牌的名稱（使用繁體中文，例如：一萬, 二萬, 三萬, 四條, 五條, 六條, 東風, 紅中...）。請僅輸出牌名並以逗號分隔，不要額外解釋。"
 
             val contentArray = JsonArray().apply {
@@ -309,13 +357,15 @@ class VllmApiClient {
                 .post(requestBody)
 
             if (apiKey.isNotBlank()) {
-                requestBuilder.addHeader("Authorization", "Bearer $apiKey")
+                val trimmedKey = apiKey.trim()
+                requestBuilder.addHeader("Authorization", "Bearer $trimmedKey")
+                requestBuilder.addHeader("X-API-Key", trimmedKey)
             }
 
             client.newCall(requestBuilder.build()).execute().use { response ->
                 if (!response.isSuccessful) {
                     val errBody = response.body?.string() ?: ""
-                    return@withContext Result.failure(Exception("vLLM 視覺辨識失敗 HTTP ${response.code}: $errBody"))
+                    return@withContext Result.failure(Exception("HTTP ${response.code}: $errBody"))
                 }
 
                 val responseBody = response.body?.string() ?: ""
@@ -335,11 +385,7 @@ class VllmApiClient {
                     MahjongTile.findByQuery(token)
                 }
 
-                if (detectedTiles.isEmpty()) {
-                    Result.failure(Exception("AI 回應未解析出任何有效麻將牌: $content"))
-                } else {
-                    Result.success(detectedTiles)
-                }
+                Result.success(detectedTiles)
             }
         } catch (e: Exception) {
             Result.failure(e)

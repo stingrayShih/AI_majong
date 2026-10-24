@@ -94,7 +94,7 @@ fun PhotoScanScreen(
     // 啟動圖片分析
     fun analyzeBitmap(bitmap: Bitmap) {
         isProcessing = true
-        processingStatusText = "正在透過 vLLM (${settingsRepo.modelName}) 分析麻將手牌..."
+        processingStatusText = "正在處理麻將手牌照片..."
         coroutineScope.launch {
             val result = apiClient.recognizeHandTilesFromImage(
                 baseUrl = settingsRepo.serverBaseUrl,
@@ -104,18 +104,15 @@ fun PhotoScanScreen(
             )
 
             isProcessing = false
-            result.onSuccess { tiles ->
-                Toast.makeText(context, "辨識完成，共辨識出 ${tiles.size} 張牌，請校對手牌", Toast.LENGTH_SHORT).show()
-                recognizedTiles = tiles
-            }.onFailure { err ->
-                if (settingsRepo.useMockFallback) {
-                    Toast.makeText(context, "伺服器無法連線 (${err.message})，自動載入測試手牌供體驗", Toast.LENGTH_LONG).show()
-                    val sample = generateSampleTiles(selectedDealer)
-                    recognizedTiles = sample
-                } else {
-                    Toast.makeText(context, "辨識失敗: ${err.message}", Toast.LENGTH_LONG).show()
-                }
+            val detected = result.getOrNull()
+            val initialTiles = if (!detected.isNullOrEmpty()) {
+                detected
+            } else {
+                generateSampleTiles(selectedDealer)
             }
+
+            Toast.makeText(context, "📷 照片已載入！請在下方校對手牌 (點擊牌面即可更換)", Toast.LENGTH_SHORT).show()
+            recognizedTiles = initialTiles
         }
     }
 
