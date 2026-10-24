@@ -60,22 +60,21 @@ class VllmApiClient {
                         }
 
                         val startTime = System.currentTimeMillis()
-                        client.newCall(requestBuilder.build()).execute().use { response ->
-                            val latency = (System.currentTimeMillis() - startTime).coerceAtLeast(1)
-                            val body = response.body?.string() ?: ""
-                            return@withContext when (response.code) {
-                                in 200..299 -> Result.success(Pair("✅ 連線成功！(HTTP ${response.code})", latency))
-                                401 -> Result.success(Pair("伺服器在線 (HTTP 401: 需填寫有效 API Key，格式 sk-vsr-...)", latency))
-                                403 -> Result.success(Pair("伺服器在線 (HTTP 403: API Key 權限不足或格式錯誤)", latency))
-                                405 -> Result.success(Pair("伺服器在線 (HTTP 405: 服務端點活躍)", latency))
-                                400, 422 -> Result.success(Pair("伺服器在線 (HTTP ${response.code}: 端點正常運作)", latency))
-                                404 -> {
-                                    // 404 for this specific endpoint, try next
-                                    lastException = Exception("HTTP 404 at $url")
-                                    null // continue to next endpoint
-                                }
-                                else -> Result.failure(Exception("伺服器回應 HTTP ${response.code}: ${response.message}"))
-                            } ?: continue
+                        val response = client.newCall(requestBuilder.build()).execute()
+                        val latency = (System.currentTimeMillis() - startTime).coerceAtLeast(1)
+                        val code = response.code
+                        response.close()
+
+                        when (code) {
+                            in 200..299 -> return@withContext Result.success(Pair("✅ 連線成功！(HTTP $code)", latency))
+                            401 -> return@withContext Result.success(Pair("伺服器在線 (HTTP 401: 需填寫有效 API Key，格式 sk-vsr-...)", latency))
+                            403 -> return@withContext Result.success(Pair("伺服器在線 (HTTP 403: API Key 權限不足或格式錯誤)", latency))
+                            405 -> return@withContext Result.success(Pair("伺服器在線 (HTTP 405: 服務端點活躍)", latency))
+                            400, 422 -> return@withContext Result.success(Pair("伺服器在線 (HTTP $code: 端點正常運作)", latency))
+                            404 -> {
+                                lastException = Exception("HTTP 404 at $url")
+                            }
+                            else -> return@withContext Result.failure(Exception("伺服器回應 HTTP $code"))
                         }
                     } catch (e: Exception) {
                         lastException = e
