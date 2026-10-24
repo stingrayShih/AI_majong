@@ -222,17 +222,17 @@ fun SettingsScreen(
                     Toast.makeText(context, "⚡ 正在向伺服器發送測試請求，請稍候...", Toast.LENGTH_SHORT).show()
 
                     coroutineScope.launch {
-                        val result = apiClient.testConnection(targetUrl, apiKey.trim())
+                        val result = apiClient.testConnection(targetUrl, apiKey.trim(), modelName.trim())
                         isTestingConnection = false
                         result.onSuccess { (msg, latency) ->
-                            connectionTestResult = Pair(true, "$msg\n(回應延遲: ${latency}ms)")
+                            connectionTestResult = Pair(true, msg)
                             showResultDialog = true
-                            Toast.makeText(context, "✅ $msg (${latency}ms)", Toast.LENGTH_LONG).show()
+                            Toast.makeText(context, "✅ 驗證成功 (${latency}ms)", Toast.LENGTH_LONG).show()
                         }.onFailure { err ->
                             val errMsg = err.message ?: "無法建立連線"
                             connectionTestResult = Pair(false, errMsg)
                             showResultDialog = true
-                            Toast.makeText(context, "❌ 連線失敗: $errMsg", Toast.LENGTH_LONG).show()
+                            Toast.makeText(context, errMsg.lines().firstOrNull() ?: "連線失敗", Toast.LENGTH_LONG).show()
                         }
                     }
                 },

@@ -25,11 +25,12 @@ class VllmApiClient {
         .build()
 
     /**
-     * 測試 vLLM Semantic Router 官方雲端 API 連線與延遲
-     * 端點: https://decision.vllm-sr.ai
-     * 認證: Authorization: Bearer sk-vsr-... 或 X-API-Key: sk-vsr-...
+     * 完整測試 vLLM Semantic Router 官方雲端 API：
+     * 1. 驗證伺服器網路連通與延遲
+     * 2. 驗證 API Key 是否通過授權 (HTTP 401/403 攔截)
+     * 3. 實際發送 Decision 請求驗證指定模型 (modelName) 是否在線且能正常運作
      */
-    suspend fun testConnection(baseUrl: String, apiKey: String): Result<Pair<String, Long>> =
+    suspend fun testConnection(baseUrl: String, apiKey: String, modelName: String = "d3-flash"): Result<Pair<String, Long>> =
         withContext(Dispatchers.IO) {
             try {
                 var cleanUrl = baseUrl.trim()
@@ -41,51 +42,106 @@ class VllmApiClient {
                 }
                 cleanUrl = cleanUrl.trimEnd('/')
 
-                // 官方提供的模型列表端點: GET /v1/systemone/models (無需認證)
-                val endpointsToTry = listOf(
-                    "$cleanUrl/v1/systemone/models",
-                    "$cleanUrl/v1/models",
-                    "$cleanUrl/docs",
-                    cleanUrl
-                )
-
-                var lastException: Exception? = null
-                for (url in endpointsToTry) {
-                    try {
-                        val requestBuilder = Request.Builder().url(url).get()
-                        if (apiKey.isNotBlank()) {
-                            val trimmedKey = apiKey.trim()
-                            requestBuilder.addHeader("Authorization", "Bearer $trimmedKey")
-                            requestBuilder.addHeader("X-API-Key", trimmedKey)
-                        }
-
-                        val startTime = System.currentTimeMillis()
-                        val response = client.newCall(requestBuilder.build()).execute()
-                        val latency = (System.currentTimeMillis() - startTime).coerceAtLeast(1)
-                        val code = response.code
-                        response.close()
-
-                        when (code) {
-                            in 200..299 -> return@withContext Result.success(Pair("✅ 連線成功！(HTTP $code)", latency))
-                            401 -> return@withContext Result.success(Pair("伺服器在線 (HTTP 401: 需填寫有效 API Key，格式 sk-vsr-...)", latency))
-                            403 -> return@withContext Result.success(Pair("伺服器在線 (HTTP 403: API Key 權限不足或格式錯誤)", latency))
-                            405 -> return@withContext Result.success(Pair("伺服器在線 (HTTP 405: 服務端點活躍)", latency))
-                            400, 422 -> return@withContext Result.success(Pair("伺服器在線 (HTTP $code: 端點正常運作)", latency))
-                            404 -> {
-                                lastException = Exception("HTTP 404 at $url")
-                            }
-                            else -> return@withContext Result.failure(Exception("伺服器回應 HTTP $code"))
-                        }
-                    } catch (e: Exception) {
-                        lastException = e
-                    }
+                val trimmedKey = apiKey.trim()
+                if (trimmedKey.isEmpty()) {
+                    return@withContext Result.failure(Exception("請先填寫 API Key（格式如 sk-vsr-...），才能進行金鑰與模型驗證！"))
                 }
 
-                Result.failure(lastException ?: Exception("無法連線至 $baseUrl"))
+                val endpoint = "$cleanUrl/v1/systemone"
+                val actualModel = if (!modelName.startsWith("vllm-sr/") && cleanUrl.contains("vllm-sr.ai")) {
+                    "vllm-sr/$modelName"
+                } else {
+                    modelName
+                }
+
+                // 建立一個真實的輕量 System One 決策請求進行金鑰與模型雙重驗證
+                val questionObj = JsonObject().apply {
+                    addProperty("type", "noul")
+                    addProperty("instructions", "Is the decision model online and functioning normally?")
+                }
+                val questionsWrapper = JsonObject().apply {
+                    add("health_check", questionObj)
+                }
+                val payload = JsonObject().apply {
+                    addProperty("model", actualModel)
+                    addProperty("state", "麻將 AI 伺服器連線、API Key 授權與模型狀態雙重驗證。")
+                    add("questions", questionsWrapper)
+                }
+
+                val requestBody = payload.toString().toRequestBody("application/json".toMediaType())
+                val requestBuilder = Request.Builder()
+                    .url(endpoint)
+                    .post(requestBody)
+                    .addHeader("Authorization", "Bearer $trimmedKey")
+                    .addHeader("X-API-Key", trimmedKey)
+
+                val startTime = System.currentTimeMillis()
+                val response = client.newCall(requestBuilder.build()).execute()
+                val latency = (System.currentTimeMillis() - startTime).coerceAtLeast(1)
+                val code = response.code
+                val responseBody = response.body?.string() ?: ""
+                response.close()
+
+                when (code) {
+                    200 -> {
+                        // 200 表示 API Key 完全正確，且模型成功完成決策推論！
+                        Result.success(
+                            Pair(
+                                "✅ 驗證全數通過！\n" +
+                                        "• 伺服器：連線正常\n" +
+                                        "• API Key：授權認證成功\n" +
+                                        "• 模型：【$actualModel】正常運作\n" +
+                                        "• 延遲：${latency}ms",
+                                latency
+                            )
+                        )
+                    }
+                    401 -> {
+                        val errMsg = extractErrorMessage(responseBody) ?: "未知的無效金鑰"
+                        Result.failure(Exception("❌ API Key 無效或未授權 (HTTP 401)\n伺服器回應: $errMsg\n請檢查是否正確填寫有效的 sk-vsr-... 金鑰！"))
+                    }
+                    403 -> {
+                        val errMsg = extractErrorMessage(responseBody) ?: "無權限存取該模型"
+                        Result.failure(Exception("❌ 權限不足 (HTTP 403)\n伺服器回應: $errMsg\n請確認您的 Key 是否有權限存取模型 $actualModel"))
+                    }
+                    404 -> {
+                        Result.failure(Exception("❌ 端點不存在 (HTTP 404)\n請確認 Base URL 是否為 https://decision.vllm-sr.ai"))
+                    }
+                    429 -> {
+                        Result.failure(Exception("⚠️ 達到頻率或額度限制 (HTTP 429 Too Many Requests)\n伺服器忙碌中，請稍候重試。"))
+                    }
+                    500, 502, 503, 504 -> {
+                        Result.failure(Exception("⚠️ 伺服器端錯誤或模型正在啟動維護中 (HTTP $code)\n延遲: ${latency}ms"))
+                    }
+                    else -> {
+                        val errMsg = extractErrorMessage(responseBody) ?: responseBody
+                        Result.failure(Exception("伺服器回應 HTTP $code: $errMsg"))
+                    }
+                }
             } catch (e: Exception) {
-                Result.failure(Exception("連線失敗: ${e.localizedMessage ?: e.message}"))
+                Result.failure(Exception("❌ 無法連線至伺服器：${e.localizedMessage ?: e.message}"))
             }
         }
+
+    private fun extractErrorMessage(jsonStr: String): String? {
+        return try {
+            val json = gson.fromJson(jsonStr, JsonObject::class.java)
+            if (json.has("error")) {
+                val err = json.get("error")
+                if (err.isJsonObject) {
+                    err.asJsonObject.get("message")?.asString
+                } else {
+                    err.asString
+                }
+            } else if (json.has("message")) {
+                json.get("message").asString
+            } else {
+                null
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
 
     /**
      * 呼叫 vLLM Semantic Router 官方 /v1/systemone 端點
