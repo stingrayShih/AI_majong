@@ -276,6 +276,10 @@ fun SettingsScreen(
                         Toast.makeText(context, "請先輸入 API Base URL！", Toast.LENGTH_SHORT).show()
                         return@Button
                     }
+                    if (apiKey.trim().isBlank()) {
+                        Toast.makeText(context, "⚠️ 請先填入 API Key 再進行連線測試！(格式為 sk-vsr-...)", Toast.LENGTH_LONG).show()
+                        return@Button
+                    }
                     isTestingConnection = true
                     connectionTestResult = null
                     Toast.makeText(context, "⚡ 正在向伺服器發送測試請求，請稍候...", Toast.LENGTH_SHORT).show()

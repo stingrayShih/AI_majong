@@ -436,6 +436,10 @@ fun PhotoScanScreen(
 
                                 Button(
                                     onClick = {
+                                        if (settingsRepo.apiKey.isBlank()) {
+                                            Toast.makeText(context, "⚠️ 尚未設定 API Key！請先至首頁「設定 (⚙️)」填入您的 API Key", Toast.LENGTH_LONG).show()
+                                            return@Button
+                                        }
                                         val bmp = capturedBitmap ?: return@Button
                                         isProcessing = true
                                         coroutineScope.launch {
