@@ -34,7 +34,7 @@
 - [x] **Phase 1: 台灣麻將領域模型、狀態機與 Jetpack Compose UI**（已完工）
 - [x] **Phase 2: CameraX 拍照辨識、相簿選圖與手牌校對微調介面**（已完工）
 - [x] **Phase 3: vLLM D3 官方雲端 API (`/v1/systemone`) 串接、Ping 測速與端點設定頁面**（已完工，無須自架）
-- [ ] **Phase 4: Android Room 資料庫本地歷程持久化與牌局覆盤**（規劃中）
+- [x] **Phase 4: Android Room 資料庫本地歷程持久化與逐巡覆盤**（已完工）
 
 ---
 
@@ -43,6 +43,7 @@
 - **語言**：Kotlin 2.0+
 - **UI 框架**：Jetpack Compose (Material3)
 - **非同步與狀態流**：Kotlin Coroutines & StateFlow
+- **本地資料庫**：Android Room 2.6.1 + KSP 代碼生成 (SQLite 持久化)
 - **建置工具**：Gradle 8.9 (Kotlin DSL + Version Catalog)
 - **相機框架**：CameraX 1.4.0 (Lifecycle, Camera2, View)
 - **決策模型端點**：vLLM Semantic Router Decision 3.0 官方雲端 API (`https://decision.vllm-sr.ai/v1/systemone`)，API Key 格式 `sk-vsr-...`

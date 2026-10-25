@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.aimajong.app.data.SettingsRepository
+import com.aimajong.app.data.db.GameRecordRepository
 import com.aimajong.app.model.*
 import com.aimajong.app.network.VllmApiClient
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -22,6 +23,12 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
 
     val settingsRepo = SettingsRepository(application)
     val vllmApiClient = VllmApiClient()
+    val recordRepo = GameRecordRepository(application)
+    val allGameRecords = recordRepo.allRecords
+
+    private var currentGameId: String = java.util.UUID.randomUUID().toString()
+    private var initialHandTiles: List<MahjongTile> = emptyList()
+    private var gameStartTime: Long = System.currentTimeMillis()
 
     private val _gameState = MutableStateFlow(GameState())
     val gameState: StateFlow<GameState> = _gameState.asStateFlow()
@@ -62,6 +69,9 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
      */
     fun startNewGame(initialHand: List<MahjongTile> = emptyList(), dealerSeat: PlayerSeat = PlayerSeat.SELF) {
         historySnapshots.clear()
+        currentGameId = java.util.UUID.randomUUID().toString()
+        initialHandTiles = initialHand
+        gameStartTime = System.currentTimeMillis()
 
         _gameState.value = GameState(
             dealerSeat = dealerSeat,
@@ -553,6 +563,19 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
             )
         }
 
+        val isQiangGang = pending != null
+        viewModelScope.launch {
+            recordRepo.saveGameRecord(
+                gameId = currentGameId,
+                startTime = gameStartTime,
+                endTime = System.currentTimeMillis(),
+                gameState = _gameState.value,
+                initialHandTiles = initialHandTiles,
+                isDrawGame = false,
+                isQiangGang = isQiangGang
+            )
+        }
+
         _aiDecision.value = AIDecisionResult(
             recommendedAction = "🏆 牌局結束！",
             optionsProbability = emptyList(),
@@ -565,6 +588,63 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
             }
         )
         return true
+    }
+
+    /**
+     * 宣告海底流局 (無人胡牌結束本局並持久化至資料庫)
+     */
+    fun onDeclareDrawGame() {
+        val current = _gameState.value
+        if (current.isGameOver) return
+
+        _showSelfHuPrompt.value = null
+        _pendingQiangGang.value = null
+        saveSnapshot()
+
+        _gameState.update { s ->
+            s.copy(
+                isGameOver = true,
+                winnerSeat = null,
+                loserSeat = null,
+                phase = TurnPhase.GAME_OVER
+            )
+        }
+
+        viewModelScope.launch {
+            recordRepo.saveGameRecord(
+                gameId = currentGameId,
+                startTime = gameStartTime,
+                endTime = System.currentTimeMillis(),
+                gameState = _gameState.value,
+                initialHandTiles = initialHandTiles,
+                isDrawGame = true,
+                isQiangGang = false
+            )
+        }
+
+        _aiDecision.value = AIDecisionResult(
+            recommendedAction = "🀄 牌局結束 (海底流局)",
+            optionsProbability = emptyList(),
+            explanationNote = "牌局無人胡牌，宣告海底流局。"
+        )
+    }
+
+    /**
+     * 刪除歷史牌局記錄
+     */
+    fun deleteGameRecord(id: String) {
+        viewModelScope.launch {
+            recordRepo.deleteRecord(id)
+        }
+    }
+
+    /**
+     * 清空所有歷史紀錄
+     */
+    fun clearAllGameRecords() {
+        viewModelScope.launch {
+            recordRepo.clearAllRecords()
+        }
     }
 
     /**

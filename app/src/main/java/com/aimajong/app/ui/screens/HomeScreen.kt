@@ -121,10 +121,10 @@ fun HomeScreen(
                     onClick = onStartPhotoScan
                 )
 
-                // 功能 3: 牌局歷史
+                // 功能 3: 牌局歷史與覆盤
                 MenuActionCard(
-                    title = "牌局歷史紀錄",
-                    subtitle = "回顧過往牌局走勢與操作記錄",
+                    title = "牌局歷史紀錄與覆盤",
+                    subtitle = "查看 SQLite 本機歷史對局與逐巡步進覆盤檢討",
                     icon = Icons.Default.History,
                     onClick = onViewHistory
                 )

@@ -96,12 +96,16 @@ class MainActivity : ComponentActivity() {
                         onOpenSettings = {
                             overlayReturnScreen = "game"
                             currentScreen = "settings"
+                        },
+                        onViewHistory = {
+                            overlayReturnScreen = "game"
+                            currentScreen = "history"
                         }
                     )
 
                     "history" -> {
                         HistoryScreen(
-                            records = gameState.history,
+                            viewModel = gameViewModel,
                             onBack = { currentScreen = overlayReturnScreen }
                         )
                     }

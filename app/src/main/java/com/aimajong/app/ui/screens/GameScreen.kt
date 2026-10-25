@@ -14,7 +14,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Undo
-import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -40,7 +40,8 @@ import com.aimajong.app.ui.viewmodel.GameViewModel
 fun GameScreen(
     viewModel: GameViewModel,
     onBackToHome: () -> Unit,
-    onOpenSettings: () -> Unit
+    onOpenSettings: () -> Unit,
+    onViewHistory: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val state by viewModel.gameState.collectAsState()
@@ -60,6 +61,7 @@ fun GameScreen(
     var showChangeDealerDialog by remember { mutableStateOf(false) }
     var showDebugDialog by remember { mutableStateOf(false) }
     var showAllAiOptions by remember { mutableStateOf(false) }
+    var showDrawGameConfirmDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -111,6 +113,13 @@ fun GameScreen(
                             contentDescription = "復原",
                             tint = if (viewModel.canUndo) AccentGold else Color.Gray
                         )
+                    }
+
+                    // 🀄 海底流局 (未結束時開放)
+                    if (!state.isGameOver) {
+                        IconButton(onClick = { showDrawGameConfirmDialog = true }) {
+                            Icon(Icons.Default.StopCircle, contentDescription = "宣告海底流局", tint = TextMuted)
+                        }
                     }
 
                     // ⚙️ 伺服器設定
@@ -435,7 +444,8 @@ fun GameScreen(
                 onFangQiangClicked = {
                     huInitialIsZiMo = false
                     showHuDialog = true
-                }
+                },
+                onViewHistory = onViewHistory
             )
             Spacer(modifier = Modifier.height(24.dp))
         }
@@ -600,6 +610,31 @@ fun GameScreen(
         )
     }
 
+    // 宣告海底流局確認對話框
+    if (showDrawGameConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showDrawGameConfirmDialog = false },
+            title = { Text("宣告海底流局") },
+            text = { Text("確定本局無人胡牌並宣告海底流局嗎？這將結束本局並將完整歷程保存至本機資料庫。") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.onDeclareDrawGame()
+                        showDrawGameConfirmDialog = false
+                        Toast.makeText(context, "已宣告海底流局並儲存紀錄", Toast.LENGTH_SHORT).show()
+                    }
+                ) {
+                    Text("確認流局", color = AccentGold, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDrawGameConfirmDialog = false }) {
+                    Text("取消")
+                }
+            }
+        )
+    }
+
     // 決策報文偵錯檢視視窗
     if (showDebugDialog) {
         val latestLog by viewModel.vllmApiClient.latestDebugLog.collectAsState()
@@ -669,16 +704,36 @@ fun DynamicActionBar(
     onOtherMeldClicked: () -> Unit,
     onPassCallClicked: () -> Unit,
     onZiMoClicked: () -> Unit,
-    onFangQiangClicked: () -> Unit
+    onFangQiangClicked: () -> Unit,
+    onViewHistory: () -> Unit = {}
 ) {
     if (state.isGameOver) {
-        Card(
-            colors = CardDefaults.cardColors(containerColor = CardBackground),
-            modifier = Modifier.fillMaxWidth().height(48.dp)
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("牌局已鎖定 (若按錯可點右上角 ↩ 復原)", color = TextMuted, fontSize = 13.sp)
+            Button(
+                onClick = onViewHistory,
+                modifier = Modifier.fillMaxWidth().height(48.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = AccentGold),
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Icon(Icons.Default.PlayCircle, contentDescription = "查看覆盤", tint = MahjongGreenDark)
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    "🔍 查看逐巡覆盤與歷史紀錄",
+                    color = MahjongGreenDark,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp
+                )
             }
+            Text(
+                "牌局已結束並保存至本機資料庫 (若按錯可點右上角 ↩ 復原)",
+                color = TextMuted,
+                fontSize = 12.sp,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth()
+            )
         }
         return
     }
