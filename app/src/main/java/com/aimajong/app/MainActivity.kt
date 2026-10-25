@@ -24,6 +24,7 @@ class MainActivity : ComponentActivity() {
                 var currentScreen by rememberSaveable { mutableStateOf("home") }
                 var pendingSetupMode by rememberSaveable { mutableStateOf("photo") } // "photo" 或 "manual"
                 var selectedDealerSeat by rememberSaveable { mutableStateOf(PlayerSeat.SELF) }
+                var overlayReturnScreen by rememberSaveable { mutableStateOf("home") } // 記錄歷史與設定頁面的上一頁 ("home" 或 "game")
                 val gameState by gameViewModel.gameState.collectAsState()
 
                 // 系統返回鍵支援：非首頁時對應左上角返回箭頭，避免誤觸直接關閉 App
@@ -33,9 +34,7 @@ class MainActivity : ComponentActivity() {
                         "manual_setup" -> currentScreen = "dealer_selection"
                         "photo_scan" -> currentScreen = "dealer_selection"
                         "game" -> currentScreen = "home"
-                        "history", "settings" -> {
-                            currentScreen = if (gameState.handTiles.isNotEmpty() && !gameState.isGameOver) "game" else "home"
-                        }
+                        "history", "settings" -> currentScreen = overlayReturnScreen
                     }
                 }
 
@@ -51,8 +50,14 @@ class MainActivity : ComponentActivity() {
                             pendingSetupMode = "manual"
                             currentScreen = "dealer_selection"
                         },
-                        onViewHistory = { currentScreen = "history" },
-                        onOpenSettings = { currentScreen = "settings" }
+                        onViewHistory = {
+                            overlayReturnScreen = "home"
+                            currentScreen = "history"
+                        },
+                        onOpenSettings = {
+                            overlayReturnScreen = "home"
+                            currentScreen = "settings"
+                        }
                     )
 
                     "dealer_selection" -> DealerSelectionScreen(
@@ -88,15 +93,16 @@ class MainActivity : ComponentActivity() {
                     "game" -> GameScreen(
                         viewModel = gameViewModel,
                         onBackToHome = { currentScreen = "home" },
-                        onOpenSettings = { currentScreen = "settings" }
+                        onOpenSettings = {
+                            overlayReturnScreen = "game"
+                            currentScreen = "settings"
+                        }
                     )
 
                     "history" -> {
                         HistoryScreen(
                             records = gameState.history,
-                            onBack = {
-                                currentScreen = if (gameState.handTiles.isNotEmpty() && !gameState.isGameOver) "game" else "home"
-                            }
+                            onBack = { currentScreen = overlayReturnScreen }
                         )
                     }
 
@@ -104,9 +110,7 @@ class MainActivity : ComponentActivity() {
                         SettingsScreen(
                             settingsRepo = gameViewModel.settingsRepo,
                             apiClient = gameViewModel.vllmApiClient,
-                            onBack = {
-                                currentScreen = if (gameState.handTiles.isNotEmpty() && !gameState.isGameOver) "game" else "home"
-                            }
+                            onBack = { currentScreen = overlayReturnScreen }
                         )
                     }
                 }
