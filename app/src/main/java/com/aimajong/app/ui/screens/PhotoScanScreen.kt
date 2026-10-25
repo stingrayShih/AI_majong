@@ -5,10 +5,16 @@ import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Matrix
+import android.util.Size
+import android.view.MotionEvent
 import android.widget.Toast
+import java.util.concurrent.TimeUnit
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.*
+import androidx.camera.core.resolutionselector.ResolutionSelector
+import androidx.camera.core.resolutionselector.ResolutionStrategy
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.Image
@@ -34,6 +40,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -97,10 +104,29 @@ fun PhotoScanScreen(
     var editingTileIndex by remember { mutableStateOf<Int?>(null) }
     var showDebugDialog by remember { mutableStateOf(false) }
 
-    // 相機 ImageCapture 實例
+    // 系統返回鍵支援：與左上角返回箭頭行為 100% 同步，避免直接退出程式
+    BackHandler {
+        when {
+            recognizedTiles != null -> recognizedTiles = null
+            capturedBitmap != null -> capturedBitmap = null
+            else -> onBack()
+        }
+    }
+
+    // 高畫質相機 ImageCapture 實例：鎖定超高解析度與 3A (對焦/曝光) 收斂以獲得清晰牌面
     val imageCapture = remember {
+        val resolutionSelector = ResolutionSelector.Builder()
+            .setResolutionStrategy(
+                ResolutionStrategy(
+                    Size(3840, 2160),
+                    ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER
+                )
+            )
+            .build()
+
         ImageCapture.Builder()
-            .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
+            .setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY)
+            .setResolutionSelector(resolutionSelector)
             .build()
     }
 
@@ -262,27 +288,43 @@ fun PhotoScanScreen(
                             }
                         }
 
-                        // 中間相片顯示與手指拖曳框
-                        Box(
+                        // 中間相片顯示與手指拖曳框 (精準 1:1 貼合圖片實際像素範圍，杜絕黑邊偏移)
+                        BoxWithConstraints(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .weight(1f)
                                 .background(Color.Black),
                             contentAlignment = Alignment.Center
                         ) {
-                            Image(
-                                bitmap = capturedBitmap!!.asImageBitmap(),
-                                contentDescription = "待裁切手牌照片",
-                                contentScale = ContentScale.Fit,
-                                modifier = Modifier.fillMaxSize()
-                            )
+                            val containerW = constraints.maxWidth.toFloat()
+                            val containerH = constraints.maxHeight.toFloat()
+                            val bmp = capturedBitmap!!
+                            val bmpW = bmp.width.toFloat()
+                            val bmpH = bmp.height.toFloat()
 
-                            DraggableCropOverlay(
-                                cropRectNorm = cropRectNorm,
-                                onCropRectChanged = { cropRectNorm = it },
-                                tileCount = targetCount,
-                                modifier = Modifier.fillMaxSize()
-                            )
+                            val scale = if (bmpW > 0f && bmpH > 0f) minOf(containerW / bmpW, containerH / bmpH) else 1f
+                            val displayedWidthDp = with(LocalDensity.current) { (bmpW * scale).toDp() }
+                            val displayedHeightDp = with(LocalDensity.current) { (bmpH * scale).toDp() }
+
+                            Box(
+                                modifier = Modifier
+                                    .size(displayedWidthDp, displayedHeightDp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Image(
+                                    bitmap = bmp.asImageBitmap(),
+                                    contentDescription = "待裁切手牌照片",
+                                    contentScale = ContentScale.FillBounds,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+
+                                DraggableCropOverlay(
+                                    cropRectNorm = cropRectNorm,
+                                    onCropRectChanged = { cropRectNorm = it },
+                                    tileCount = targetCount,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            }
 
                             if (isProcessing) {
                                 Box(
@@ -552,7 +594,9 @@ fun PhotoScanScreen(
                         if (hasCameraPermission) {
                             AndroidView(
                                 factory = { ctx ->
-                                    val previewView = PreviewView(ctx)
+                                    val previewView = PreviewView(ctx).apply {
+                                        scaleType = PreviewView.ScaleType.FIT_CENTER
+                                    }
                                     val cameraProviderFuture = ProcessCameraProvider.getInstance(ctx)
                                     cameraProviderFuture.addListener({
                                         try {
@@ -562,12 +606,27 @@ fun PhotoScanScreen(
                                             }
                                             val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
                                             cameraProvider.unbindAll()
-                                            cameraProvider.bindToLifecycle(
+                                            val camera = cameraProvider.bindToLifecycle(
                                                 lifecycleOwner,
                                                 cameraSelector,
                                                 preview,
                                                 imageCapture
                                             )
+
+                                            // 支援點擊預覽畫面手動對焦 (Tap-to-Focus)
+                                            previewView.setOnTouchListener { view, motionEvent ->
+                                                if (motionEvent.action == MotionEvent.ACTION_UP) {
+                                                    val factory = previewView.meteringPointFactory
+                                                    val point = factory.createPoint(motionEvent.x, motionEvent.y)
+                                                    val action = FocusMeteringAction.Builder(
+                                                        point,
+                                                        FocusMeteringAction.FLAG_AF or FocusMeteringAction.FLAG_AE
+                                                    ).setAutoCancelDuration(3, TimeUnit.SECONDS).build()
+                                                    camera.cameraControl.startFocusAndMetering(action)
+                                                    view.performClick()
+                                                }
+                                                true
+                                            }
                                         } catch (e: Exception) {
                                             // 模擬器無相機或初始化錯誤
                                         }

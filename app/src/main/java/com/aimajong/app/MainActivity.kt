@@ -2,6 +2,7 @@ package com.aimajong.app
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.compose.runtime.*
@@ -24,6 +25,19 @@ class MainActivity : ComponentActivity() {
                 var pendingSetupMode by rememberSaveable { mutableStateOf("photo") } // "photo" 或 "manual"
                 var selectedDealerSeat by rememberSaveable { mutableStateOf(PlayerSeat.SELF) }
                 val gameState by gameViewModel.gameState.collectAsState()
+
+                // 系統返回鍵支援：非首頁時對應左上角返回箭頭，避免誤觸直接關閉 App
+                BackHandler(enabled = currentScreen != "home") {
+                    when (currentScreen) {
+                        "dealer_selection" -> currentScreen = "home"
+                        "manual_setup" -> currentScreen = "dealer_selection"
+                        "photo_scan" -> currentScreen = "dealer_selection"
+                        "game" -> currentScreen = "home"
+                        "history", "settings" -> {
+                            currentScreen = if (gameState.handTiles.isNotEmpty() && !gameState.isGameOver) "game" else "home"
+                        }
+                    }
+                }
 
                 when (currentScreen) {
                     "home" -> HomeScreen(
